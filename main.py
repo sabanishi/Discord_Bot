@@ -15,6 +15,7 @@ CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 COSENSE_PROJECT = os.getenv("COSENSE_PROJECT")
 COSENSE_SID = os.getenv("COSENSE_SID")
 COSENSE_CSRF_TOKEN = os.getenv("COSENSE_CSRF_TOKEN")
+MENTION_TARGET = os.getenv("MENTION_TARGET", "")
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -29,17 +30,17 @@ def parse_time_env(env_name: str, default_value: str) -> tuple[int, int]:
         minute = int(minute_text)
     except ValueError:
         raise RuntimeError(
-            f"環境変数 {env_name} は HH:MM 形式で指定してください。現在の値: {value}"
+            f"環境変数 {env_name} は HH:MM 形式で指定してください\n現在の値: {value}"
         )
 
     if not 0 <= hour <= 23:
         raise RuntimeError(
-            f"環境変数 {env_name} の時が不正です。0〜23で指定してください。現在の値: {value}"
+            f"環境変数 {env_name} の時が不正です。0〜23で指定してください\n現在の値: {value}"
         )
 
     if not 0 <= minute <= 59:
         raise RuntimeError(
-            f"環境変数 {env_name} の分が不正です。0〜59で指定してください。現在の値: {value}"
+            f"環境変数 {env_name} の分が不正です。0〜59で指定してください\n現在の値: {value}"
         )
 
     return hour, minute
@@ -128,7 +129,7 @@ async def create_cosense_page(title: str, lines: list[str]) -> str:
 
             if response.status < 200 or response.status >= 300:
                 raise RuntimeError(
-                    f"Cosenseページ作成に失敗しました: "
+                    f"Scrapboxページ作成に失敗しました:\n"
                     f"status={response.status}, body={response_text}"
                 )
 
@@ -146,18 +147,18 @@ async def fetch_cosense_page_lines(title: str) -> list[str]:
             response_text = await response.text()
 
             if response.status == 404:
-                raise RuntimeError(f"Cosenseページが見つかりません: {title}")
+                raise RuntimeError(f"Scrapboxページが見つかりません:\n{title}")
 
             if response.status < 200 or response.status >= 300:
                 raise RuntimeError(
-                    f"Cosenseページ取得に失敗しました: "
+                    f"Scrapboxページ取得に失敗しました:\n"
                     f"status={response.status}, body={response_text}"
                 )
 
             data = json.loads(response_text)
 
     if "lines" not in data:
-        raise RuntimeError(f"Cosenseページ取得結果に lines が含まれていません: {title}")
+        raise RuntimeError(f"Scrapboxページ取得結果が不正です:\ntitle:\n{title}\nresponse_text:\n{response_text}")
 
     return [line.get("text", "") for line in data["lines"]]
 
@@ -169,9 +170,9 @@ async def run_create_job(target: datetime):
     channel = client.get_channel(CHANNEL_ID)
 
     if channel is None:
-        raise RuntimeError(f"チャンネルが見つかりません: {CHANNEL_ID}")
+        raise RuntimeError(f"チャンネルが見つかりません:\n{CHANNEL_ID}")
 
-    await channel.send(f"Cosenseページを作成しました: {page_url}")
+    await channel.send(f"おはようございます。　今日の日記ページです。\n{page_url}")
 
 
 def normalize_lines(lines: list[str]) -> list[str]:
@@ -187,18 +188,6 @@ def normalize_lines(lines: list[str]) -> list[str]:
     return normalized
 
 
-async def run_daily_job(target: datetime):
-    title, lines = build_page_from_template(target)
-    page_url = await create_cosense_page(title, lines)
-
-    channel = client.get_channel(CHANNEL_ID)
-
-    if channel is None:
-        raise RuntimeError(f"チャンネルが見つかりません: {CHANNEL_ID}")
-
-    await channel.send(f"Cosenseページを作成しました: {page_url}")
-
-
 async def run_check_job(target: datetime):
     title, expected_lines = build_page_from_template(target)
     actual_lines = await fetch_cosense_page_lines(title)
@@ -209,14 +198,16 @@ async def run_check_job(target: datetime):
     channel = client.get_channel(CHANNEL_ID)
 
     if channel is None:
-        raise RuntimeError(f"チャンネルが見つかりません: {CHANNEL_ID}")
+        raise RuntimeError(f"チャンネルが見つかりません:\n{CHANNEL_ID}")
 
     page_url = get_page_url(title)
 
-    if actual != expected:
-        await channel.send(f"Cosenseページは変更されています: {page_url}")
-    else:
-        await channel.send(f"Cosenseページはまだ変更されていません: {page_url}")
+    if actual == expected:
+        await channel.send(
+            f"{MENTION_TARGET}\n"
+            f"まだ日記が更新されていませんよ。早く済ませてください！\n"
+            f"{page_url}"
+)
 
 
 async def sleep_until_next_time(hour: int, minute: int) -> datetime:
@@ -246,11 +237,17 @@ async def create_page_loop():
             print(f"Cosenseページを作成します: {target}")
             await run_create_job(target)
         except Exception as e:
-            print(f"ページ作成処理でエラーが発生しました: {e}")
+            print(f"ページ作成処理でエラーが発生しました:\n{e}")
 
             channel = client.get_channel(CHANNEL_ID)
             if channel is not None:
-                await channel.send(f"Cosenseページ作成に失敗しました: {e}")
+                await channel.send(
+                    f"{MENTION_TARGET}\n"
+                    f"Scrapboxページが作成できませんでしたよ。\n"
+                    f"何かバグがあるんじゃないですか？:\n"
+                    f"<エラーログ>\n"
+                    f"{e}"
+                )
 
 
 async def check_page_loop():
@@ -263,14 +260,20 @@ async def check_page_loop():
         )
 
         try:
-            print(f"Cosenseページの変更を確認します: {target}")
+            print(f"Cosenseページの変更を確認します:\n{target}")
             await run_check_job(target)
         except Exception as e:
-            print(f"ページ確認処理でエラーが発生しました: {e}")
+            print(f"ページ確認処理でエラーが発生しました:\n{e}")
 
             channel = client.get_channel(CHANNEL_ID)
             if channel is not None:
-                await channel.send(f"Cosenseページ確認に失敗しました: {e}")
+                await channel.send(
+                    f"{MENTION_TARGET}\n"
+                    f"ああ、もう！日記チェックができませんでしたよ！\n"
+                    f"ちゃんとプログラム書いてください！:\n"
+                    f"<エラーログ>\n"
+                    f"{e}"
+                )
 
 
 @client.event
