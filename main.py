@@ -20,6 +20,35 @@ JST = ZoneInfo("Asia/Tokyo")
 
 daily_task_started = False
 
+def parse_time_env(env_name: str, default_value: str) -> tuple[int, int]:
+    value = os.getenv(env_name, default_value)
+
+    try:
+        hour_text, minute_text = value.split(":")
+        hour = int(hour_text)
+        minute = int(minute_text)
+    except ValueError:
+        raise RuntimeError(
+            f"環境変数 {env_name} は HH:MM 形式で指定してください。現在の値: {value}"
+        )
+
+    if not 0 <= hour <= 23:
+        raise RuntimeError(
+            f"環境変数 {env_name} の時が不正です。0〜23で指定してください。現在の値: {value}"
+        )
+
+    if not 0 <= minute <= 59:
+        raise RuntimeError(
+            f"環境変数 {env_name} の分が不正です。0〜59で指定してください。現在の値: {value}"
+        )
+
+    return hour, minute
+
+
+CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE = parse_time_env("CREATE_PAGE_TIME", "7:00")
+CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE = parse_time_env("CHECK_PAGE_TIME", "21:15")
+
+
 def validate_env():
     if not TOKEN:
         raise RuntimeError("環境変数 DISCORD_TOKEN が設定されていません")
@@ -208,7 +237,10 @@ async def create_page_loop():
     await client.wait_until_ready()
 
     while not client.is_closed():
-        target = await sleep_until_next_time(hour=17, minute=55)
+        target = await sleep_until_next_time(
+            hour=CREATE_PAGE_HOUR,
+            minute=CREATE_PAGE_MINUTE,
+        )
 
         try:
             print(f"Cosenseページを作成します: {target}")
@@ -225,7 +257,10 @@ async def check_page_loop():
     await client.wait_until_ready()
 
     while not client.is_closed():
-        target = await sleep_until_next_time(hour=17, minute=56)
+        target = await sleep_until_next_time(
+            hour=CHECK_PAGE_HOUR,
+            minute=CHECK_PAGE_MINUTE,
+        )
 
         try:
             print(f"Cosenseページの変更を確認します: {target}")
