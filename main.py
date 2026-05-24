@@ -8,14 +8,25 @@ from urllib.parse import quote
 import aiohttp
 from keep_alive import keep_alive
 
+
 client = discord.Client(intents=discord.Intents.default())
+
+
+def build_mention_target() -> str:
+    user_id = os.getenv("MENTION_TARGET", "").strip()
+
+    if not user_id:
+        return ""
+
+    return f"<@{user_id}>"
+
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 COSENSE_PROJECT = os.getenv("COSENSE_PROJECT")
 COSENSE_SID = os.getenv("COSENSE_SID")
 COSENSE_CSRF_TOKEN = os.getenv("COSENSE_CSRF_TOKEN")
-MENTION_TARGET = os.getenv("MENTION_TARGET", "")
+MENTION_TARGET = build_mention_target()
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -172,7 +183,7 @@ async def run_create_job(target: datetime):
     if channel is None:
         raise RuntimeError(f"チャンネルが見つかりません:\n{CHANNEL_ID}")
 
-    await channel.send(f"おはようございます。　今日の日記ページです。\n{page_url}")
+    await channel.send(f"おはようございます。今日の日記ページです。\n{page_url}")
 
 
 def normalize_lines(lines: list[str]) -> list[str]:
