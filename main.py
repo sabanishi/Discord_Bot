@@ -208,7 +208,7 @@ async def create_page_loop():
     await client.wait_until_ready()
 
     while not client.is_closed():
-        target = await sleep_until_next_time(hour=17, minute=50)
+        target = await sleep_until_next_time(hour=17, minute=55)
 
         try:
             print(f"Cosenseページを作成します: {target}")
@@ -225,7 +225,7 @@ async def check_page_loop():
     await client.wait_until_ready()
 
     while not client.is_closed():
-        target = await sleep_until_next_time(hour=17, minute=51)
+        target = await sleep_until_next_time(hour=17, minute=56)
 
         try:
             print(f"Cosenseページの変更を確認します: {target}")
