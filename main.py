@@ -186,7 +186,7 @@ async def run_create_job(target: datetime):
     if channel is None:
         raise RuntimeError(f"チャンネルが見つかりません:\n{CHANNEL_ID}")
 
-    await channel.send(f"おはようございます。今日の日記ページです。\n{page_url}")
+    await channel.send(f"おはようございます。今日の日記ページはこちらです。\n{page_url}")
 
 
 def normalize_lines(lines: list[str]) -> list[str]:
@@ -218,7 +218,10 @@ async def run_check_job(target: datetime):
 
     if actual == expected:
         await channel.send(
-            f"{MENTION_TARGET}\n" f"まだ日記が更新されていませんよ。早く済ませてください！\n" f"{page_url}"
+            f"{MENTION_TARGET}\n"
+            f"もう、何やってたんですか！　まだ日記が更新されていませんよ！\n"
+            f"早く済ませてください。"
+            f"{page_url}"
         )
 
 
