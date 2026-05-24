@@ -1,13 +1,13 @@
-import discord
-import os
 import asyncio
 import json
+import os
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from urllib.parse import quote
-import aiohttp
-from keep_alive import keep_alive
+from zoneinfo import ZoneInfo
 
+import aiohttp
+import discord
+from keep_alive import keep_alive
 
 client = discord.Client(intents=discord.Intents.default())
 
@@ -32,6 +32,7 @@ JST = ZoneInfo("Asia/Tokyo")
 
 daily_task_started = False
 
+
 def parse_time_env(env_name: str, default_value: str) -> tuple[int, int]:
     value = os.getenv(env_name, default_value)
 
@@ -40,19 +41,13 @@ def parse_time_env(env_name: str, default_value: str) -> tuple[int, int]:
         hour = int(hour_text)
         minute = int(minute_text)
     except ValueError:
-        raise RuntimeError(
-            f"環境変数 {env_name} は HH:MM 形式で指定してください\n現在の値: {value}"
-        )
+        raise RuntimeError(f"環境変数 {env_name} は HH:MM 形式で指定してください\n現在の値: {value}")
 
     if not 0 <= hour <= 23:
-        raise RuntimeError(
-            f"環境変数 {env_name} の時が不正です。0〜23で指定してください\n現在の値: {value}"
-        )
+        raise RuntimeError(f"環境変数 {env_name} の時が不正です。0〜23で指定してください\n現在の値: {value}")
 
     if not 0 <= minute <= 59:
-        raise RuntimeError(
-            f"環境変数 {env_name} の分が不正です。0〜59で指定してください\n現在の値: {value}"
-        )
+        raise RuntimeError(f"環境変数 {env_name} の分が不正です。0〜59で指定してください\n現在の値: {value}")
 
     return hour, minute
 
@@ -87,8 +82,7 @@ def build_page_from_template(target_date: datetime) -> tuple[str, list[str]]:
         template = f.read()
 
     text = (
-        template
-        .replace("${year}", today.strftime("%Y"))
+        template.replace("${year}", today.strftime("%Y"))
         .replace("${today}", today.strftime("%Y-%m-%d"))
         .replace("${yesterday}", yesterday.strftime("%Y-%m-%d"))
         .replace("${tomorrow}", tomorrow.strftime("%Y-%m-%d"))
@@ -102,6 +96,7 @@ def build_page_from_template(target_date: datetime) -> tuple[str, list[str]]:
     title = lines[0]
     return title, lines
 
+
 def get_cosense_headers() -> dict[str, str]:
     return {
         "Accept": "application/json, text/plain, */*",
@@ -109,8 +104,10 @@ def get_cosense_headers() -> dict[str, str]:
         "Cookie": f"connect.sid={COSENSE_SID}",
     }
 
+
 def get_page_url(title: str) -> str:
     return f"https://scrapbox.io/{COSENSE_PROJECT}/{quote(title)}"
+
 
 async def create_cosense_page(title: str, lines: list[str]) -> str:
     validate_env()
@@ -135,7 +132,9 @@ async def create_cosense_page(title: str, lines: list[str]) -> str:
     )
 
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=get_cosense_headers(), data=form) as response:
+        async with session.post(
+            url, headers=get_cosense_headers(), data=form
+        ) as response:
             response_text = await response.text()
 
             if response.status < 200 or response.status >= 300:
@@ -169,7 +168,9 @@ async def fetch_cosense_page_lines(title: str) -> list[str]:
             data = json.loads(response_text)
 
     if "lines" not in data:
-        raise RuntimeError(f"Scrapboxページ取得結果が不正です:\ntitle:\n{title}\nresponse_text:\n{response_text}")
+        raise RuntimeError(
+            f"Scrapboxページ取得結果が不正です:\ntitle:\n{title}\nresponse_text:\n{response_text}"
+        )
 
     return [line.get("text", "") for line in data["lines"]]
 
@@ -215,10 +216,8 @@ async def run_check_job(target: datetime):
 
     if actual == expected:
         await channel.send(
-            f"{MENTION_TARGET}\n"
-            f"まだ日記が更新されていませんよ。早く済ませてください！\n"
-            f"{page_url}"
-)
+            f"{MENTION_TARGET}\n" f"まだ日記が更新されていませんよ。早く済ませてください！\n" f"{page_url}"
+        )
 
 
 async def sleep_until_next_time(hour: int, minute: int) -> datetime:
@@ -280,7 +279,7 @@ async def check_page_loop():
             if channel is not None:
                 await channel.send(
                     f"{MENTION_TARGET}\n"
-                    f"ああ、もう！日記チェックができませんでしたよ！\n"
+                    f"ああ、もう！日記がチェックできませんでしたよ！\n"
                     f"ちゃんとプログラム書いてください！:\n"
                     f"<エラーログ>\n"
                     f"{e}"
@@ -296,6 +295,7 @@ async def on_ready():
         daily_task_started = True
         client.loop.create_task(create_page_loop())
         client.loop.create_task(check_page_loop())
+
 
 keep_alive()
 client.run(TOKEN)
