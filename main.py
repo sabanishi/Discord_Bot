@@ -82,7 +82,9 @@ def build_page_from_template(target_date: datetime) -> tuple[str, list[str]]:
         template = f.read()
 
     text = (
-        template.replace("${year}", today.strftime("%Y"))
+        template
+        .replace("${year}", today.strftime("%Y"))
+        .replace("${month}", today.strftime("%m"))
         .replace("${today}", today.strftime("%Y-%m-%d"))
         .replace("${yesterday}", yesterday.strftime("%Y-%m-%d"))
         .replace("${tomorrow}", tomorrow.strftime("%Y-%m-%d"))
