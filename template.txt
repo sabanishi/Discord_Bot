@@ -1,7 +1,6 @@
 ${today}
 [${yesterday}]<- ->[${tomorrow}]
 [/icons/水平線.icon]
-
 [#<> 今日の出来事]
 
 
