@@ -22,7 +22,8 @@ def build_mention_target() -> str:
 
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
+DEFAULT_CHANNEL_ID = int(os.getenv("DISCORD_DEFAULT_CHANNEL_ID"))
+ALERT_CHANNEL_ID = int(os.getenv("DISCORD_ALERT_CHANNEL_ID"))
 COSENSE_PROJECT = os.getenv("COSENSE_PROJECT")
 COSENSE_SID = os.getenv("COSENSE_SID")
 COSENSE_CSRF_TOKEN = os.getenv("COSENSE_CSRF_TOKEN")
@@ -60,8 +61,11 @@ def validate_env():
     if not TOKEN:
         raise RuntimeError("環境変数 DISCORD_TOKEN が設定されていません")
 
-    if not CHANNEL_ID:
-        raise RuntimeError("環境変数 DISCORD_CHANNEL_ID が設定されていません")
+    if not DEFAULT_CHANNEL_ID:
+        raise RuntimeError("環境変数 DISCORD_DEFAULT_CHANNEL_ID が設定されていません")
+
+    if not ALERT_CHANNEL_ID:
+        raise RuntimeError("環境変数 DISCORD_ALERT_CHANNEL_ID が設定されていません")
 
     if not COSENSE_PROJECT:
         raise RuntimeError("環境変数 COSENSE_PROJECT が設定されていません")
@@ -181,10 +185,10 @@ async def run_create_job(target: datetime):
     title, lines = build_page_from_template(target)
     page_url = await create_cosense_page(title, lines)
 
-    channel = client.get_channel(CHANNEL_ID)
+    channel = client.get_channel(DEFAULT_CHANNEL_ID)
 
     if channel is None:
-        raise RuntimeError(f"チャンネルが見つかりません:\n{CHANNEL_ID}")
+        raise RuntimeError(f"チャンネルが見つかりません:\n{DEFAULT_CHANNEL_ID}")
 
     await channel.send(f"おはようございます。今日の日記ページはこちらです。\n{page_url}")
 
@@ -209,10 +213,10 @@ async def run_check_job(target: datetime):
     expected = normalize_lines(expected_lines)
     actual = normalize_lines(actual_lines)
 
-    channel = client.get_channel(CHANNEL_ID)
+    channel = client.get_channel(ALERT_CHANNEL_ID)
 
     if channel is None:
-        raise RuntimeError(f"チャンネルが見つかりません:\n{CHANNEL_ID}")
+        raise RuntimeError(f"チャンネルが見つかりません:\n{ALERT_CHANNEL_ID}")
 
     page_url = get_page_url(title)
 
@@ -254,7 +258,7 @@ async def create_page_loop():
         except Exception as e:
             print(f"ページ作成処理でエラーが発生しました:\n{e}")
 
-            channel = client.get_channel(CHANNEL_ID)
+            channel = client.get_channel(ALERT_CHANNEL_ID)
             if channel is not None:
                 await channel.send(
                     f"{MENTION_TARGET}\n"
@@ -280,7 +284,7 @@ async def check_page_loop():
         except Exception as e:
             print(f"ページ確認処理でエラーが発生しました:\n{e}")
 
-            channel = client.get_channel(CHANNEL_ID)
+            channel = client.get_channel(ALERT_CHANNEL_ID)
             if channel is not None:
                 await channel.send(
                     f"{MENTION_TARGET}\n"
