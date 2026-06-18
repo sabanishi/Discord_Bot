@@ -115,6 +115,27 @@ def get_page_url(title: str) -> str:
     return f"https://scrapbox.io/{COSENSE_PROJECT}/{quote(title)}"
 
 
+async def safe_send(channel_id: int, message: str) -> bool:
+    channel = client.get_channel(channel_id)
+
+    if channel is None:
+        print(f"チャンネルが見つかりません:\n{channel_id}", flush=True)
+        return False
+
+    if len(message) > 1800:
+        message = f"{message[:1800]}\n...(長すぎるため省略しました)"
+
+    try:
+        await channel.send(message)
+        return True
+    except discord.HTTPException as e:
+        print(f"Discordへのメッセージ送信に失敗しました:\n{e}", flush=True)
+        return False
+    except Exception as e:
+        print(f"Discordへのメッセージ送信で予期しないエラーが発生しました:\n{e}", flush=True)
+        return False
+
+
 async def create_cosense_page(title: str, lines: list[str]) -> str:
     validate_env()
 
@@ -185,12 +206,10 @@ async def run_create_job(target: datetime):
     title, lines = build_page_from_template(target)
     page_url = await create_cosense_page(title, lines)
 
-    channel = client.get_channel(DEFAULT_CHANNEL_ID)
-
-    if channel is None:
-        raise RuntimeError(f"チャンネルが見つかりません:\n{DEFAULT_CHANNEL_ID}")
-
-    await channel.send(f"おはようございます。今日の日記ページはこちらです。\n{page_url}")
+    await safe_send(
+        DEFAULT_CHANNEL_ID,
+        f"おはようございます。今日の日記ページはこちらです。\n{page_url}",
+    )
 
 
 def normalize_lines(lines: list[str]) -> list[str]:
@@ -213,15 +232,11 @@ async def run_check_job(target: datetime):
     expected = normalize_lines(expected_lines)
     actual = normalize_lines(actual_lines)
 
-    channel = client.get_channel(ALERT_CHANNEL_ID)
-
-    if channel is None:
-        raise RuntimeError(f"チャンネルが見つかりません:\n{ALERT_CHANNEL_ID}")
-
     page_url = get_page_url(title)
 
     if actual == expected:
-        await channel.send(
+        await safe_send(
+            ALERT_CHANNEL_ID,
             f"{MENTION_TARGET}\n"
             f"もう、何やってたんですか！　まだ日記が更新されていませんよ！\n"
             f"早く済ませてください。"
@@ -258,15 +273,14 @@ async def create_page_loop():
         except Exception as e:
             print(f"ページ作成処理でエラーが発生しました:\n{e}")
 
-            channel = client.get_channel(ALERT_CHANNEL_ID)
-            if channel is not None:
-                await channel.send(
-                    f"{MENTION_TARGET}\n"
-                    f"Scrapboxページが作成できませんでしたよ。\n"
-                    f"何かバグがあるんじゃないですか？:\n"
-                    f"<エラーログ>\n"
-                    f"{e}"
-                )
+            await safe_send(
+                ALERT_CHANNEL_ID,
+                f"{MENTION_TARGET}\n"
+                f"Scrapboxページが作成できませんでしたよ。\n"
+                f"何かバグがあるんじゃないですか？:\n"
+                f"<エラーログ>\n"
+                f"{e}",
+            )
 
 
 async def check_page_loop():
@@ -284,15 +298,14 @@ async def check_page_loop():
         except Exception as e:
             print(f"ページ確認処理でエラーが発生しました:\n{e}")
 
-            channel = client.get_channel(ALERT_CHANNEL_ID)
-            if channel is not None:
-                await channel.send(
-                    f"{MENTION_TARGET}\n"
-                    f"ああ、もう！日記がチェックできませんでしたよ！\n"
-                    f"ちゃんとプログラム書いてください！:\n"
-                    f"<エラーログ>\n"
-                    f"{e}"
-                )
+            await safe_send(
+                ALERT_CHANNEL_ID,
+                f"{MENTION_TARGET}\n"
+                f"ああ、もう！日記がチェックできませんでしたよ！\n"
+                f"ちゃんとプログラム書いてください！:\n"
+                f"<エラーログ>\n"
+                f"{e}",
+            )
 
 
 @client.event
