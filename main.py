@@ -26,7 +26,6 @@ DEFAULT_CHANNEL_ID = int(os.getenv("DISCORD_DEFAULT_CHANNEL_ID"))
 ALERT_CHANNEL_ID = int(os.getenv("DISCORD_ALERT_CHANNEL_ID"))
 COSENSE_PROJECT = os.getenv("COSENSE_PROJECT")
 COSENSE_SID = os.getenv("COSENSE_SID")
-COSENSE_CSRF_TOKEN = os.getenv("COSENSE_CSRF_TOKEN")
 MENTION_TARGET = build_mention_target()
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -57,6 +56,19 @@ CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE = parse_time_env("CREATE_PAGE_TIME", "7:00"
 CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE = parse_time_env("CHECK_PAGE_TIME", "21:15")
 
 
+def normalize_sid(sid: str) -> str:
+    sid = sid.strip()
+
+    if sid.startswith("connect.sid="):
+        return sid.removeprefix("connect.sid=").strip()
+
+    return sid
+
+
+def get_encoded_project() -> str:
+    return quote(COSENSE_PROJECT, safe="")
+
+
 def validate_env():
     if not TOKEN:
         raise RuntimeError("環境変数 DISCORD_TOKEN が設定されていません")
@@ -72,9 +84,6 @@ def validate_env():
 
     if not COSENSE_SID:
         raise RuntimeError("環境変数 COSENSE_SID が設定されていません")
-
-    if not COSENSE_CSRF_TOKEN:
-        raise RuntimeError("環境変数 COSENSE_CSRF_TOKEN が設定されていません")
 
 
 def build_page_from_template(target_date: datetime) -> tuple[str, list[str]]:
@@ -103,16 +112,32 @@ def build_page_from_template(target_date: datetime) -> tuple[str, list[str]]:
     return title, lines
 
 
-def get_cosense_headers() -> dict[str, str]:
+def get_cosense_read_headers() -> dict[str, str]:
+    sid = normalize_sid(COSENSE_SID)
+
     return {
         "Accept": "application/json, text/plain, */*",
-        "X-CSRF-TOKEN": COSENSE_CSRF_TOKEN,
-        "Cookie": f"connect.sid={COSENSE_SID}",
+        "Cookie": f"connect.sid={sid}",
+    }
+
+
+def get_cosense_import_headers() -> dict[str, str]:
+    sid = normalize_sid(COSENSE_SID)
+    encoded_project = get_encoded_project()
+
+    return {
+        "Accept": "application/json, text/plain, */*",
+        "Cookie": f"connect.sid={sid}",
+        "Origin": "https://scrapbox.io",
+        "Referer": f"https://scrapbox.io/{encoded_project}/settings/page-data",
     }
 
 
 def get_page_url(title: str) -> str:
-    return f"https://scrapbox.io/{COSENSE_PROJECT}/{quote(title)}"
+    encoded_project = get_encoded_project()
+    encoded_title = quote(title, safe="")
+
+    return f"https://scrapbox.io/{encoded_project}/{encoded_title}"
 
 
 async def safe_send(channel_id: int, message: str) -> bool:
@@ -136,10 +161,24 @@ async def safe_send(channel_id: int, message: str) -> bool:
         return False
 
 
+def build_import_form(import_data: dict) -> aiohttp.FormData:
+    form = aiohttp.FormData()
+
+    form.add_field(
+        "import-file",
+        json.dumps(import_data, ensure_ascii=False).encode("utf-8"),
+        filename="import.json",
+        content_type="application/octet-stream",
+    )
+
+    return form
+
+
 async def create_cosense_page(title: str, lines: list[str]) -> str:
     validate_env()
 
-    url = f"https://scrapbox.io/api/page-data/import/{COSENSE_PROJECT}.json"
+    encoded_project = get_encoded_project()
+    url = f"https://scrapbox.io/api/page-data/import/{encoded_project}.json"
 
     import_data = {
         "pages": [
@@ -150,17 +189,11 @@ async def create_cosense_page(title: str, lines: list[str]) -> str:
         ]
     }
 
-    form = aiohttp.FormData()
-    form.add_field(
-        "import-file",
-        json.dumps(import_data, ensure_ascii=False).encode("utf-8"),
-        filename="import.json",
-        content_type="application/octet-stream",
-    )
-
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            url, headers=get_cosense_headers(), data=form
+            url,
+            headers=get_cosense_import_headers(),
+            data=build_import_form(import_data),
         ) as response:
             response_text = await response.text()
 
@@ -176,11 +209,12 @@ async def create_cosense_page(title: str, lines: list[str]) -> str:
 async def fetch_cosense_page_lines(title: str) -> list[str]:
     validate_env()
 
+    encoded_project = get_encoded_project()
     encoded_title = quote(title, safe="")
-    url = f"https://scrapbox.io/api/pages/{COSENSE_PROJECT}/{encoded_title}"
+    url = f"https://scrapbox.io/api/pages/{encoded_project}/{encoded_title}"
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=get_cosense_headers()) as response:
+        async with session.get(url, headers=get_cosense_read_headers()) as response:
             response_text = await response.text()
 
             if response.status == 404:
@@ -196,7 +230,9 @@ async def fetch_cosense_page_lines(title: str) -> list[str]:
 
     if "lines" not in data:
         raise RuntimeError(
-            f"Scrapboxページ取得結果が不正です:\ntitle:\n{title}\nresponse_text:\n{response_text}"
+            f"Scrapboxページ取得結果が不正です:\n"
+            f"title:\n{title}\n"
+            f"response_text:\n{response_text}"
         )
 
     return [line.get("text", "") for line in data["lines"]]
@@ -239,8 +275,8 @@ async def run_check_job(target: datetime):
             ALERT_CHANNEL_ID,
             f"{MENTION_TARGET}\n"
             f"もう、何やってたんですか！　まだ日記が更新されていませんよ！\n"
-            f"早く済ませてください。"
-            f"{page_url}"
+            f"早く済ませてください。\n"
+            f"{page_url}",
         )
 
 
@@ -268,10 +304,10 @@ async def create_page_loop():
         )
 
         try:
-            print(f"Cosenseページを作成します: {target}")
+            print(f"Cosenseページを作成します: {target}", flush=True)
             await run_create_job(target)
         except Exception as e:
-            print(f"ページ作成処理でエラーが発生しました:\n{e}")
+            print(f"ページ作成処理でエラーが発生しました:\n{e}", flush=True)
 
             await safe_send(
                 ALERT_CHANNEL_ID,
@@ -293,10 +329,10 @@ async def check_page_loop():
         )
 
         try:
-            print(f"Cosenseページの変更を確認します:\n{target}")
+            print(f"Cosenseページの変更を確認します:\n{target}", flush=True)
             await run_check_job(target)
         except Exception as e:
-            print(f"ページ確認処理でエラーが発生しました:\n{e}")
+            print(f"ページ確認処理でエラーが発生しました:\n{e}", flush=True)
 
             await safe_send(
                 ALERT_CHANNEL_ID,
@@ -311,7 +347,8 @@ async def check_page_loop():
 @client.event
 async def on_ready():
     global daily_task_started
-    print("ログインしました")
+
+    print("ログインしました", flush=True)
 
     if not daily_task_started:
         daily_task_started = True
