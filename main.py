@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 import discord
 from keep_alive import keep_alive
-from link_warning import CosenseLinkClient, LinkWarningState
+from link_warning import LinkWarningState, ScrapboxLinkClient
 
 client = discord.Client(intents=discord.Intents.default())
 
@@ -86,6 +86,15 @@ LINK_WARNING_RESOLVE_THRESHOLD = parse_int_env(
     "LINK_WARNING_RESOLVE_THRESHOLD", "25", minimum=0
 )
 LINK_WARNING_CONFIG_PAGE = os.getenv("LINK_WARNING_CONFIG_PAGE", "").strip()
+
+if LINK_WARNING_RESOLVE_THRESHOLD >= LINK_WARNING_THRESHOLD:
+    adjusted_threshold = max(0, LINK_WARNING_THRESHOLD - 1)
+    print(
+        "LINK_WARNING_RESOLVE_THRESHOLD が LINK_WARNING_THRESHOLD 未満ではないため、"
+        f"{adjusted_threshold} に補正します",
+        flush=True,
+    )
+    LINK_WARNING_RESOLVE_THRESHOLD = adjusted_threshold
 
 link_warning_state = LinkWarningState(
     warning_threshold=LINK_WARNING_THRESHOLD,
@@ -382,7 +391,7 @@ async def check_page_loop():
 
 
 async def run_link_warning_check():
-    cosense = CosenseLinkClient(
+    cosense = ScrapboxLinkClient(
         project=COSENSE_PROJECT,
         sid=normalize_sid(COSENSE_SID),
     )

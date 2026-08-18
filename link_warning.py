@@ -59,7 +59,7 @@ class LinkWarningState:
         self.warned_page_ids.add(page_id)
 
 
-class CosenseLinkClient:
+class ScrapboxLinkClient:
     def __init__(self, project: str, sid: str, timeout_seconds: int = 30):
         self.project = project
         self.sid = sid
@@ -90,7 +90,7 @@ class CosenseLinkClient:
                 total_count = data.get("count")
 
                 if not isinstance(raw_pages, list) or not isinstance(total_count, int):
-                    raise RuntimeError("Cosenseページ一覧のレスポンス形式が不正です")
+                    raise RuntimeError("Scrapboxページ一覧のレスポンス形式が不正です")
 
                 for raw_page in raw_pages:
                     try:
@@ -98,14 +98,14 @@ class CosenseLinkClient:
                         title = raw_page["title"]
                         linked_count = raw_page["linked"]
                     except (KeyError, TypeError) as exc:
-                        raise RuntimeError("Cosenseページ一覧に必須項目がありません") from exc
+                        raise RuntimeError("Scrapboxページ一覧に必須項目がありません") from exc
 
                     if (
                         not isinstance(page_id, str)
                         or not isinstance(title, str)
                         or not isinstance(linked_count, int)
                     ):
-                        raise RuntimeError("Cosenseページ一覧の項目形式が不正です")
+                        raise RuntimeError("Scrapboxページ一覧の項目形式が不正です")
 
                     pages.append(PageSummary(page_id, title, linked_count))
 
@@ -135,7 +135,7 @@ class CosenseLinkClient:
 
         lines = data.get("lines")
         if not isinstance(lines, list):
-            raise RuntimeError("Cosense除外設定ページのレスポンス形式が不正です")
+            raise RuntimeError("Scrapbox除外設定ページのレスポンス形式が不正です")
 
         excluded: set[str] = {config_page_title}
         for line in lines:
@@ -163,17 +163,17 @@ class CosenseLinkClient:
             response_text = await response.text()
             if response.status < 200 or response.status >= 300:
                 raise RuntimeError(
-                    f"Cosense APIの取得に失敗しました: "
+                    f"Scrapbox APIの取得に失敗しました: "
                     f"status={response.status}, body={response_text[:500]}"
                 )
 
             try:
                 data = await response.json(content_type=None)
             except (ValueError, aiohttp.ContentTypeError) as exc:
-                raise RuntimeError("Cosense APIが不正なJSONを返しました") from exc
+                raise RuntimeError("Scrapbox APIが不正なJSONを返しました") from exc
 
         if not isinstance(data, dict):
-            raise RuntimeError("Cosense APIのレスポンス形式が不正です")
+            raise RuntimeError("Scrapbox APIのレスポンス形式が不正です")
         return data
 
 

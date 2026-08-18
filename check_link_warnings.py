@@ -2,17 +2,17 @@ import argparse
 import asyncio
 import os
 
-from link_warning import CosenseLinkClient, LinkWarningState
+from link_warning import LinkWarningState, ScrapboxLinkClient
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Cosenseのリンク警告をDiscordへ送らず手元で確認します。"
+        description="Scrapboxのリンク警告をDiscordへ送らず手元で確認します。"
     )
     parser.add_argument(
         "--project",
         default=os.getenv("COSENSE_PROJECT"),
-        help="Cosenseプロジェクト名（省略時: COSENSE_PROJECT）",
+        help="Scrapboxプロジェクト名（省略時: COSENSE_PROJECT）",
     )
     parser.add_argument(
         "--sid",
@@ -80,7 +80,7 @@ def normalize_sid(sid: str) -> str:
 
 
 async def run(args: argparse.Namespace) -> None:
-    client = CosenseLinkClient(args.project, normalize_sid(args.sid))
+    client = ScrapboxLinkClient(args.project, normalize_sid(args.sid))
     state = LinkWarningState(args.threshold, args.resolve_threshold)
 
     # 手動確認では、初回から現在の警告候補を表示する。
