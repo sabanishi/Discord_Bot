@@ -30,14 +30,7 @@ class LinkWarningState:
         excluded_titles: set[str],
     ) -> list[PageSummary]:
         if not self.initialized:
-            self.warned_page_ids = {
-                page.page_id
-                for page in pages
-                if page.title not in excluded_titles
-                and page.linked_count >= self.warning_threshold
-            }
             self.initialized = True
-            return []
 
         candidates: list[PageSummary] = []
 

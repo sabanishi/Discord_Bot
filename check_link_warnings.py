@@ -83,9 +83,6 @@ async def run(args: argparse.Namespace) -> None:
     client = ScrapboxLinkClient(args.project, normalize_sid(args.sid))
     state = LinkWarningState(args.threshold, args.resolve_threshold)
 
-    # 手動確認では、初回から現在の警告候補を表示する。
-    state.initialized = True
-
     while True:
         pages = await client.fetch_page_summaries()
         exclusions = await client.fetch_excluded_titles(args.config_page)

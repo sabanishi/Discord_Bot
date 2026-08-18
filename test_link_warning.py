@@ -7,11 +7,12 @@ class LinkWarningStateTest(unittest.TestCase):
     def setUp(self):
         self.state = LinkWarningState(warning_threshold=30, resolve_threshold=25)
 
-    def test_initial_scan_does_not_notify(self):
+    def test_initial_scan_notifies_existing_oversized_link(self):
         pages = [PageSummary("1", "KJ法", 40)]
 
-        self.assertEqual(self.state.find_new_warnings(pages, set()), [])
-        self.assertIn("1", self.state.warned_page_ids)
+        warnings = self.state.find_new_warnings(pages, set())
+
+        self.assertEqual([page.title for page in warnings], ["KJ法"])
 
     def test_warns_once_until_resolved(self):
         self.state.find_new_warnings([PageSummary("1", "KJ法", 29)], set())
