@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 import discord
 from keep_alive import keep_alive
+from link_warning import CosenseLinkClient, LinkWarningState
 
 client = discord.Client(intents=discord.Intents.default())
 
@@ -33,6 +34,27 @@ JST = ZoneInfo("Asia/Tokyo")
 daily_task_started = False
 
 
+def parse_bool_env(env_name: str, default_value: str) -> bool:
+    value = os.getenv(env_name, default_value).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"環境変数 {env_name} は true または false で指定してください")
+
+
+def parse_int_env(env_name: str, default_value: str, minimum: int = 0) -> int:
+    value = os.getenv(env_name, default_value).strip()
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"環境変数 {env_name} は整数で指定してください") from exc
+
+    if parsed < minimum:
+        raise RuntimeError(f"環境変数 {env_name} は {minimum} 以上で指定してください")
+    return parsed
+
+
 def parse_time_env(env_name: str, default_value: str) -> tuple[int, int]:
     value = os.getenv(env_name, default_value)
 
@@ -54,6 +76,21 @@ def parse_time_env(env_name: str, default_value: str) -> tuple[int, int]:
 
 CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE = parse_time_env("CREATE_PAGE_TIME", "7:00")
 CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE = parse_time_env("CHECK_PAGE_TIME", "21:15")
+
+LINK_WARNING_ENABLED = parse_bool_env("LINK_WARNING_ENABLED", "true")
+LINK_WARNING_INTERVAL_MINUTES = parse_int_env(
+    "LINK_WARNING_INTERVAL_MINUTES", "30", minimum=1
+)
+LINK_WARNING_THRESHOLD = parse_int_env("LINK_WARNING_THRESHOLD", "30", minimum=1)
+LINK_WARNING_RESOLVE_THRESHOLD = parse_int_env(
+    "LINK_WARNING_RESOLVE_THRESHOLD", "25", minimum=0
+)
+LINK_WARNING_CONFIG_PAGE = os.getenv("LINK_WARNING_CONFIG_PAGE", "").strip()
+
+link_warning_state = LinkWarningState(
+    warning_threshold=LINK_WARNING_THRESHOLD,
+    resolve_threshold=LINK_WARNING_RESOLVE_THRESHOLD,
+)
 
 
 def normalize_sid(sid: str) -> str:
@@ -304,7 +341,7 @@ async def create_page_loop():
         )
 
         try:
-            print(f"Cosenseページを作成します: {target}", flush=True)
+            print(f"Scrapboxページを作成します: {target}", flush=True)
             await run_create_job(target)
         except Exception as e:
             print(f"ページ作成処理でエラーが発生しました:\n{e}", flush=True)
@@ -329,7 +366,7 @@ async def check_page_loop():
         )
 
         try:
-            print(f"Cosenseページの変更を確認します:\n{target}", flush=True)
+            print(f"Scrapboxページの変更を確認します:\n{target}", flush=True)
             await run_check_job(target)
         except Exception as e:
             print(f"ページ確認処理でエラーが発生しました:\n{e}", flush=True)
@@ -344,6 +381,49 @@ async def check_page_loop():
             )
 
 
+async def run_link_warning_check():
+    cosense = CosenseLinkClient(
+        project=COSENSE_PROJECT,
+        sid=normalize_sid(COSENSE_SID),
+    )
+    pages = await cosense.fetch_page_summaries()
+    excluded_titles = await cosense.fetch_excluded_titles(LINK_WARNING_CONFIG_PAGE)
+    candidates = link_warning_state.find_new_warnings(pages, excluded_titles)
+
+    for page in candidates:
+        page_url = get_page_url(page.title)
+        sent = await safe_send(
+            ALERT_CHANNEL_ID,
+            f"{MENTION_TARGET}\n"
+            f"あの、このリンク... ずいぶん大きくなっていますよ。\n"
+            f"[{page.title}]は現在{page.linked_count}ページから参照されているようです。\n"
+            f"これ以上面倒になる前に、整理や分割を考えた方がよさそうですね。\n"
+            f"{page_url}",
+        )
+        if sent:
+            link_warning_state.mark_warned(page.page_id)
+
+
+async def link_warning_loop():
+    await client.wait_until_ready()
+
+    while not client.is_closed():
+        try:
+            print("Scrapboxのリンク数を確認します", flush=True)
+            await run_link_warning_check()
+        except Exception as e:
+            print(f"リンク数確認処理でエラーが発生しました:\n{e}", flush=True)
+            await safe_send(
+                ALERT_CHANNEL_ID,
+                f"{MENTION_TARGET}\n"
+                f"ああ、もう！Scrapboxのリンク数を確認できませんでしたよ！\n"
+                f"私の処理は完璧だったはずなのに...仕方ありません。エラーログの確認が必要ですね。\n"
+                f"<エラーログ>\n{e}",
+            )
+
+        await asyncio.sleep(LINK_WARNING_INTERVAL_MINUTES * 60)
+
+
 @client.event
 async def on_ready():
     global daily_task_started
@@ -354,6 +434,8 @@ async def on_ready():
         daily_task_started = True
         client.loop.create_task(create_page_loop())
         client.loop.create_task(check_page_loop())
+        if LINK_WARNING_ENABLED:
+            client.loop.create_task(link_warning_loop())
 
 
 keep_alive()
