@@ -404,8 +404,8 @@ async def run_link_warning_check():
         sent = await safe_send(
             ALERT_CHANNEL_ID,
             f"{MENTION_TARGET}\n"
-            f"「{page.title}」が{page.linked_count}ページから参照されているようですね。\n"
-            f"そろそろ整理とか分割とか考えた方が良いんじゃないですか？\n"
+            f"「{page.title}」が{page.linked_count}個のページから参照されているようですね。\n"
+            f"そろそろ整理や分割を考えた方が良いんじゃないですか？\n"
             f"{page_url}",
         )
         if sent:
