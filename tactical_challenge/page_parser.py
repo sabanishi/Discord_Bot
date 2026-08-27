@@ -4,8 +4,8 @@ from typing import Iterable
 from .wiki_parser import normalize_student_name
 
 
-MEMBER_SEPARATOR_PATTERN = re.compile(r"[、,，]")
-MEMBER_SEPARATOR_CAPTURE_PATTERN = re.compile(r"([、,，])")
+MEMBER_SEPARATOR_PATTERN = re.compile(r"[、,，・]")
+MEMBER_SEPARATOR_CAPTURE_PATTERN = re.compile(r"([、,，・])")
 OPPONENT_ICON_PATTERN = re.compile(r"^(.*[（(])([^（）()]+)([）)])$")
 SCRAPBOX_ICON_PATTERN = re.compile(r"^\[![^\[\]]+\.icon]$")
 

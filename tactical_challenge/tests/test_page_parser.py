@@ -61,6 +61,21 @@ class ExtractPageStudentsTest(unittest.TestCase):
 
         self.assertEqual(actual, canonical_names)
 
+    def test_extracts_opponent_when_existing_formation_uses_middle_dots(self):
+        aliases = {
+            "ドルマリー": "マリー(アイドル)",
+            "エイミ": "エイミ",
+            "シロコ＊テラー": "シロコ＊テラー",
+        }
+        lines = [
+            "　Ciel(ドルマリー)",
+            "  [!エイミ.icon]・[!シロコ＊テラー.icon]・[!マリナ.icon]・[!シュン.icon]",
+        ]
+
+        actual = extract_page_students(lines, aliases)
+
+        self.assertEqual(actual, ["マリー(アイドル)"])
+
 
 class RefactorPageLinesTest(unittest.TestCase):
     def setUp(self):
@@ -180,6 +195,26 @@ class RefactorPageLinesTest(unittest.TestCase):
         self.assertEqual(
             actual,
             ["　[!エイミ.icon]・[!ホシノ.icon]・[!ツバキ.icon]"],
+        )
+
+    def test_refactors_opponent_when_existing_formation_uses_middle_dots(self):
+        aliases = {
+            **self.aliases,
+            "ドルマリー": "マリー(アイドル)",
+        }
+        lines = [
+            "　Ciel(ドルマリー)",
+            "  [!エイミ.icon]・[!シロコ＊テラー.icon]・[!マリナ.icon]・[!シュン.icon]",
+        ]
+
+        actual = refactor_page_lines(lines, aliases)
+
+        self.assertEqual(
+            actual,
+            [
+                "　Ciel([!マリー(アイドル).icon])",
+                "  [!エイミ.icon]・[!シロコ＊テラー.icon]・[!マリナ.icon]・[!シュン.icon]",
+            ],
         )
 
 
