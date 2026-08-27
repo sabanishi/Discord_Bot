@@ -17,7 +17,7 @@ def tactical_challenge_bridge_user_script():
     return send_file(
         BRIDGE_USER_SCRIPT,
         mimetype="application/javascript",
-        as_attachment=True,
+        as_attachment=False,
         download_name="tactical-challenge-bridge.user.js",
     )
 

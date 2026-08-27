@@ -20,10 +20,7 @@ class UserScriptDeliveryTest(unittest.TestCase):
             BRIDGE_SCRIPT.read_text(encoding="utf-8"),
         )
         self.assertEqual(response.mimetype, "application/javascript")
-        self.assertIn(
-            "attachment; filename=tactical-challenge-bridge.user.js",
-            response.headers["Content-Disposition"],
-        )
+        self.assertNotIn("attachment", response.headers["Content-Disposition"])
         self.assertIn("// ==UserScript==", response.get_data(as_text=True))
         self.assertIn("// @grant        GM.xmlHttpRequest", response.get_data(as_text=True))
 
