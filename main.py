@@ -7,8 +7,13 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
-from keep_alive import keep_alive
+from web_server import register_tactical_challenge_api, start_web_server
 from link_warning import LinkWarningState, ScrapboxLinkClient
+from tactical_challenge.scheduler import (
+    format_tactical_challenge_completion,
+    format_tactical_challenge_error,
+    run_tactical_challenge_once,
+)
 
 client = discord.Client(intents=discord.Intents.default())
 
@@ -390,6 +395,31 @@ async def check_page_loop():
             )
 
 
+async def tactical_challenge_loop():
+    """毎日21:15に戦術対抗戦ページをリファクタする。"""
+    await client.wait_until_ready()
+
+    while not client.is_closed():
+        target = await sleep_until_next_time(
+            hour=CHECK_PAGE_HOUR,
+            minute=CHECK_PAGE_MINUTE,
+        )
+
+        try:
+            print(f"戦術対抗戦ページを更新します: {target}", flush=True)
+            results = await run_tactical_challenge_once()
+            await safe_send(
+                DEFAULT_CHANNEL_ID,
+                format_tactical_challenge_completion(results),
+            )
+        except Exception as e:
+            print(f"戦術対抗戦ページ更新処理でエラーが発生しました:\n{e}", flush=True)
+            await safe_send(
+                ALERT_CHANNEL_ID,
+                f"{MENTION_TARGET}\n{format_tactical_challenge_error(e)}",
+            )
+
+
 async def run_link_warning_check():
     cosense = ScrapboxLinkClient(
         project=COSENSE_PROJECT,
@@ -442,9 +472,11 @@ async def on_ready():
         daily_task_started = True
         client.loop.create_task(create_page_loop())
         client.loop.create_task(check_page_loop())
+        client.loop.create_task(tactical_challenge_loop())
         if LINK_WARNING_ENABLED:
             client.loop.create_task(link_warning_loop())
 
-
-keep_alive()
+validate_env()
+register_tactical_challenge_api()
+start_web_server()
 client.run(TOKEN)
