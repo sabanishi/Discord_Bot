@@ -1,0 +1,2002 @@
+User:
+Scrapboxにて、YouTubeのようにニコニコ動画を埋め込むことは原理上可能でしょうか？
+
+Assistant:
+はい。**原理上は可能です。** ただし、「現在のクラウド版Scrapbox/CosenseをUserScriptだけで拡張して実現できるか」という意味では、現状かなり重要な制約があります。
+
+ニコニコ動画側には、外部サイト向けの埋め込みプレイヤーがあります。たとえば動画IDが `sm9` なら、概念的には次のような `iframe` でプレイヤーを表示できます。ニコニコ側の埋め込み自体は技術的に成立しています。([scrapbox.io](https://scrapbox.io/rinsuki/embed.nicovideo.jp%E3%81%AE%E7%89%B9%E6%AE%8A%E3%82%AA%E3%83%97%E3%82%B7%E3%83%A7%E3%83%B3?utm_source=chatgpt.com))
+
+```html id="8jp1kz"
+<iframe
+  src="https://embed.nicovideo.jp/watch/sm9"
+  width="640"
+  height="360">
+</iframe>
+```
+
+したがってScrapbox側で、
+
+```text id="o34ht1"
+[https://www.nicovideo.jp/watch/sm9]
+```
+
+を検出して、
+
+```text id="6hmz3i"
+動画ID sm9 を抽出
+↓
+https://embed.nicovideo.jp/watch/sm9
+↓
+iframeとしてレンダリング
+```
+
+という処理を実装すれば、YouTubeとほぼ同じユーザー体験を作れます。
+
+実際、Cosenseの要望ページにもまさに「ニコニコ動画をYouTube/Vimeoと同じように埋め込んでほしい」という要望があり、`embed.nicovideo.jp` のiframeを使う案まで出ています。([scrapbox.io](https://scrapbox.io/forum-jp/%E3%83%8B%E3%82%B3%E3%83%8B%E3%82%B3%E5%8B%95%E7%94%BB%E3%81%AE%E5%9F%8B%E3%82%81%E8%BE%BC%E3%81%BF%E3%81%AB%E5%AF%BE%E5%BF%9C%E3%81%97%E3%81%A6%E6%AC%B2%E3%81%97%E3%81%84?utm_source=chatgpt.com))
+
+問題はここです。
+
+現在のCosense公式仕様で動画埋め込み対象になっているのは、**Gyazo GIF、YouTube、Vimeo**です。ニコニコ動画は含まれていません。([scrapbox.io](https://scrapbox.io/help-jp/%E5%8B%95%E7%94%BB%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80?utm_source=chatgpt.com))
+
+さらに、過去に実際にUserScriptからニコニコのiframeを挿入する実験が行われていますが、CosenseのContent Security Policy（CSP）の `frame-src` によって `embed.nicovideo.jp` が拒否されています。当時のエラーは、許可対象が `www.youtube.com` や `player.vimeo.com` などに限定されている、というものでした。([scrapbox.io](https://scrapbox.io/villagepump/Scrapbox%E3%81%AB%E3%81%84%E3%82%8D%E3%82%93%E3%81%AA%E3%82%82%E3%81%AE%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80?utm_source=chatgpt.com))
+
+つまり整理すると、
+
+| 方法 | ニコニコ埋め込み |
+|---|---|
+| `[ニコニコURL]` を普通に書く | ❌ 現在非対応 |
+| UserScriptでiframeを生成 | ❌ CSPに阻まれる |
+| ProjectScriptでiframeを生成 | 基本的に同じCSP制約を受ける |
+| Cosense本体が正式対応 | **✅ 可能** |
+| Cosense側で `frame-src https://embed.nicovideo.jp` を許可 | **✅ 原理上可能** |
+| CSPを変更可能な独自/オンプレ環境 | **✅ 原理上可能** |
+
+したがって結論は、
+
+> **Scrapboxの構造上、ニコニコ動画をYouTubeと同様に埋め込むこと自体は十分可能。しかし、現在のクラウド版Cosenseでは「ニコニコ動画用のパーサがない」ことに加えて「CSPがiframeを阻止する」ため、通常のUserScriptだけで完全な埋め込みを追加するのは難しい。**
+
+という状態です。
+
+もし目的が「Helpfeel側の対応を待たず、自分のScrapbox上でどうにかニコニコをインライン再生したい」であれば、**CSPを踏まえて迂回可能な方法が本当にないか**まで掘って調べる価値があります。単なるiframe挿入以外に、ニコニコのプレイヤーAPI、別window/origin、ブラウザ拡張などを含めて検討できます。
+
+User:
+迂回可能な方法がないか調べて
+
+Assistant:
+調べた結果、迂回方法はあります。最も現実的なのは、**ScrapboxのUserScriptだけで突破するのではなく、Chrome拡張を1枚挟む方法**です。
+
+Scrapbox/Cosense側でも、「外部iframeはCSPの `frame-src` に阻まれる」「拡張機能なしでCSPを突破するのはほぼ不可能」という認識になっています。実際、ニコニコの `https://embed.nicovideo.jp/` を直接iframeにするとCSP違反になる例も残っています。([scrapbox.io](https://scrapbox.io/villagepump/Scrapbox%E3%81%AB%E3%81%84%E3%82%8D%E3%82%93%E3%81%AA%E3%82%82%E3%81%AE%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80?utm_source=chatgpt.com))
+
+一方、ブラウザ拡張にはこの制約を回避できる仕組みがあります。
+
+最も安全なのは、次の二重iframe構造です。
+
+```text id="qjry4f"
+Scrapbox
+│
+├─ Chrome拡張の iframe
+│   chrome-extension://xxxxx/player.html
+│
+│   └─ ニコニコ動画の iframe
+│       https://embed.nicovideo.jp/watch/sm9
+│
+└─ Scrapbox本文
+```
+
+ポイントは、Scrapboxから直接
+
+```html id="uob75d"
+<iframe src="https://embed.nicovideo.jp/watch/sm9">
+```
+
+を作らないことです。
+
+代わりにChrome拡張のContent Scriptから、
+
+```js id="55qpth"
+const frame = document.createElement("iframe");
+frame.src = chrome.runtime.getURL("player.html");
+```
+
+という**拡張機能自身のページ**をScrapbox内に入れます。
+
+Chrome/FirefoxのWebExtensionには `web_accessible_resources` という仕組みがあり、拡張機能内のHTMLをWebページから読み込ませることができます。MDNは、この種のWeb-accessible extension resourceについてCORSやCSPによってブロックされないことを明記しています。Chrome公式にも、`chrome-extension://...` のHTMLをWebページからナビゲート可能にする仕組みとして説明されています。([developer.mozilla.org](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/web_accessible_resources?utm_source=chatgpt.com))
+
+さらに、制限の強いCSPを持つページに対して、
+
+```text id="2vrwtb"
+Webページ
+  ↓
+chrome-extension://.../frame.html
+  ↓
+https://外部サイト
+```
+
+というラッパーiframeを使う手法は、Chrome拡張で実際に使われている回避方法です。([stackoverflow.com](https://stackoverflow.com/questions/24641592/injecting-iframe-into-page-with-restrictive-content-security-policy?utm_source=chatgpt.com))
+
+ニコニコ側についても問題ありません。2026年時点でもニコニコの共有機能は、
+
+```text id="disq16"
+https://embed.nicovideo.jp/watch/<動画ID>
+```
+
+を利用する埋め込みプレイヤーを提供しており、現在のMediaWikiのEmbedVideo実装でもニコニコ用URLとしてこのendpointが使われています。([github.com](https://github.com/zenn-dev/zenn-community/issues/751?utm_source=chatgpt.com))
+
+したがって、かなり高い確度で次の実装が成立します。
+
+```text id="9c9a1u"
+Scrapbox本文
+
+[https://www.nicovideo.jp/watch/sm9]
+
+        ↓ Chrome拡張が検出
+
+┌─────────────────────┐
+│                     │
+│   ニコニコプレイヤー   │
+│                     │
+│     ▶ 再生            │
+│                     │
+└─────────────────────┘
+```
+
+内部構造だけが、
+
+```text id="wz974v"
+Scrapbox
+ ↓
+extension player.html
+ ↓
+embed.nicovideo.jp
+```
+
+になります。
+
+最小構成ならChrome拡張は3ファイル程度です。
+
+`manifest.json`
+
+```json id="jc8vwq"
+{
+  "manifest_version": 3,
+  "name": "Cosense Niconico Embed",
+  "version": "0.1.0",
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://scrapbox.io/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "player.html",
+        "player.js"
+      ],
+      "matches": [
+        "https://scrapbox.io/*"
+      ]
+    }
+  ],
+
+  "content_security_policy": {
+    "extension_pages":
+      "script-src 'self'; object-src 'self'; frame-src https://embed.nicovideo.jp;"
+  }
+}
+```
+
+ChromeではManifest V3のextension pageにも独自CSPを設定でき、`script-src` には厳しい制約がありますが、`frame-src` のような他リソースのポリシーは設定できます。([developer.chrome.com](https://developer.chrome.com/docs/extensions/reference/manifest/content-security-policy?utm_source=chatgpt.com))
+
+`player.html`
+
+```html id="vjl1ic"
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    html, body, iframe {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <iframe id="player" allow="autoplay; fullscreen" allowfullscreen></iframe>
+  <script src="player.js"></script>
+</body>
+</html>
+```
+
+`player.js`
+
+```js id="g8sxch"
+const params = new URLSearchParams(location.search);
+const id = params.get("id");
+
+if (/^[A-Za-z0-9_-]+$/.test(id)) {
+  document.getElementById("player").src =
+    `https://embed.nicovideo.jp/watch/${encodeURIComponent(id)}`;
+}
+```
+
+Scrapbox側の `content.js` は概念的には、
+
+```js id="c2esk1"
+const url = "https://www.nicovideo.jp/watch/sm9";
+
+const videoId =
+  new URL(url).pathname.match(/^\/watch\/([^/]+)/)?.[1];
+
+const player = document.createElement("iframe");
+
+player.src =
+  chrome.runtime.getURL(
+    `player.html?id=${encodeURIComponent(videoId)}`
+  );
+
+player.style.width = "640px";
+player.style.height = "360px";
+
+container.appendChild(player);
+```
+
+となります。
+
+実際にはScrapboxがSPAなので、ページ切り替え時にも処理するために `MutationObserver` 等を追加し、
+
+```text id="b6do7q"
+a[href^="https://www.nicovideo.jp/watch/"]
+```
+
+に相当する外部リンクを検出してプレイヤーを挿入する形にするのがよいでしょう。ここだけは現行Scrapboxの実DOMを見てセレクタを決める必要があります。
+
+もう一つ、より荒い迂回方法も存在します。
+
+Chrome拡張の `declarativeNetRequest` にはレスポンスヘッダを変更する能力があり、
+
+```json id="m1vfu4"
+{
+  "header": "Content-Security-Policy",
+  "operation": "remove"
+}
+```
+
+としてScrapboxのCSPそのものを消すことも技術的には可能です。Chrome公式も `declarativeNetRequest` がレスポンスヘッダを変更でき、`remove` 操作が存在するとしています。([developer.chrome.com](https://developer.chrome.com/docs/extensions/develop/concepts/content-filtering?utm_source=chatgpt.com)) CSPを実際にこの方法で除去する例もあります。([stackoverflow.com](https://stackoverflow.com/questions/72186787/chrome-extensions-and-csp?utm_source=chatgpt.com))
+
+すると、
+
+```text id="v0ke8n"
+Chrome拡張
+↓
+ScrapboxのCSPを削除
+↓
+普通のUserScript
+↓
+<iframe src="https://embed.nicovideo.jp/...">
+```
+
+でも動かせます。
+
+ただし、これは勧めません。
+
+Scrapboxが
+
+```text id="3xlc77"
+script-src
+frame-src
+connect-src
+img-src
+...
+```
+
+などで設けているセキュリティ境界をまとめて弱めるからです。
+
+比較するとこうです。
+
+| 方法 | 実現性 | 安全性 | UserScriptだけ |
+|---|---:|---:|---:|
+| 直接ニコニコiframe | × | ― | ○ |
+| Tampermonkey | × | ― | ○ |
+| 外部proxy | △ | △ | △ |
+| CSPをChrome拡張で削除 | ○ | **低い** | × |
+| **Chrome拡張iframe → ニコニコiframe** | **○** | **高い** | × |
+| Cosense公式対応 | ○ | 高い | ― |
+
+したがって、今回なら私は
+
+> **小さなChrome拡張を作り、`chrome-extension://.../player.html` をScrapbox内に埋め、そのextension pageから `embed.nicovideo.jp` をiframeで表示する**
+
+方式を採ります。
+
+これならCosense側のCSP自体には手を触れません。Scrapbox内ではYouTube埋め込みとほぼ同じ見た目にできます。
+
+なお、Cosense側でも2024年12月に、サーバー環境変数 `HELPFEEL_TWEAKS_ORIGIN` で指定したドメインを `frame-src` に追加する機能が実装されていますが、これはユーザーがクラウド版Scrapboxで自由に設定できる一般的なCSP設定機能ではありません。([scrapbox.io](https://scrapbox.io/help-jp/%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9%E3%83%8E%E3%83%BC%E3%83%882024?utm_source=chatgpt.com))
+
+必要なら次に、**実際にChromeの「パッケージ化されていない拡張機能を読み込む」でそのまま動かせる完成版を、ScrapboxのニコニコURLを自動検出するところまで含めて作れます。**
+
+User:
+TampermonkeyとUserScriptだけで完結することは難しい？
+
+Assistant:
+「Tampermonkey + UserScriptだけ」という条件でも、前回考えていたより実現可能性は高いです。
+
+特に試す価値があるのが、通常の
+
+```js id="828jhq"
+document.createElement("iframe")
+```
+
+ではなく、Tampermonkeyの特権APIである `GM_addElement()` を使ってiframeを生成する方法です。
+
+Tampermonkey公式ドキュメントは `GM_addElement()` について、ページのCSPで制限される要素をTampermonkey側から追加するためのAPIだと説明しています。([tampermonkey.net](https://www.tampermonkey.net/documentation.php?q=GM_addElement&utm_source=chatgpt.com)) 実際、CSPに阻まれたiframeを
+
+```js id="so3z89"
+GM_addElement(parent, "iframe", {
+    src: "https://..."
+});
+```
+
+で追加して回避した実例もあります。([stackoverflow.com](https://stackoverflow.com/questions/69786354/tampermonkey-script-blocked-by-a-csp-error?utm_source=chatgpt.com))
+
+なので、まずはCosense上でこれだけ試す価値があります。
+
+```js id="wupkfd"
+// ==UserScript==
+// @name         Cosense Niconico Embed Test
+// @match        https://scrapbox.io/*
+// @grant        GM_addElement
+// ==/UserScript==
+
+(() => {
+    "use strict";
+
+    GM_addElement(document.body, "iframe", {
+        src: "https://embed.nicovideo.jp/watch/sm9",
+        style: `
+            width: 640px;
+            height: 360px;
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 999999;
+            border: none;
+        `,
+        allow: "autoplay; fullscreen",
+        allowfullscreen: "true"
+    });
+})();
+```
+
+これでニコニコプレイヤーが表示されれば、問題はほぼ解決です。あとは、
+
+```text id="hhuspi"
+[https://www.nicovideo.jp/watch/sm9]
+```
+
+を検出して、その場所の直下に `GM_addElement()` でiframeを置くだけです。
+
+重要なのは、この違いです。
+
+```js id="k5tqwh"
+// Cosense自身のDOM操作
+const iframe = document.createElement("iframe");
+iframe.src = "https://embed.nicovideo.jp/watch/sm9";
+container.appendChild(iframe);
+```
+
+これはCosenseのCSP、
+
+```text id="w4n4ee"
+frame-src ...
+```
+
+の制約をそのまま受けます。
+
+一方、
+
+```js id="zxlcir"
+GM_addElement(container, "iframe", {
+    src: "https://embed.nicovideo.jp/watch/sm9"
+});
+```
+
+はTampermonkey拡張側の特権を経由して要素を生成します。TampermonkeyがまさにCSP回避用途として提供しているAPIです。([tampermonkey.net](https://www.tampermonkey.net/documentation.php?q=GM_addElement&utm_source=chatgpt.com))
+
+ただし、ここはまだ「Cosense + 現行Chrome + 現行Tampermonkey + `frame-src`」の組み合わせで実機確認できていません。公式ドキュメントは `script` と `img` を例示していますが、iframeについて明示的に「すべての `frame-src` を無条件で突破する」と保証しているわけではありません。したがって、上の10行程度のテストを実際に動かすのが一番早いです。
+
+もし `GM_addElement()` でも、
+
+```text id="fl3frl"
+Refused to frame 'https://embed.nicovideo.jp/...'
+because it violates the following Content Security Policy directive: "frame-src ..."
+```
+
+となった場合にも、まだTampermonkeyだけで次の手があります。
+
+Tampermonkeyには、
+
+> `Modify existing content security policy (CSP) headers`
+
+という設定があります。Tampermonkey 4.20以降、CSPの緩和はデフォルトでは無効化されましたが、この設定を有効にすれば以前の挙動に戻せることが公式changelogに明記されています。([tampermonkey.net](https://www.tampermonkey.net/changelog.php?locale=en&more=true&old=&show=gcal&utm_source=chatgpt.com))
+
+さらに現行版では、Tampermonkey自身に
+
+> CSPを完全に削除するオプション
+
+も追加されています。([tampermonkey.net](https://www.tampermonkey.net/changelog.php?locale=en&more=true&old=&show=iikm&utm_source=chatgpt.com))
+
+したがって現状の候補は、
+
+```text id="3f69vx"
+方法1
+Tampermonkey
+  ↓
+UserScript
+  ↓
+GM_addElement("iframe")
+  ↓
+embed.nicovideo.jp
+
+これだけで動けばベスト
+```
+
+それがダメなら、
+
+```text id="gc5bi7"
+方法2
+TampermonkeyのCSP設定を変更
+  ↓
+CosenseのCSPをTampermonkeyが緩和/除去
+  ↓
+UserScript
+  ↓
+通常のiframe
+  ↓
+embed.nicovideo.jp
+```
+
+です。
+
+方法2でも「別のChrome拡張を自作」は必要ありません。必要なのは既に使用しているTampermonkeyだけです。
+
+ただし方法2の「CSP完全削除」はCosenseのセキュリティ境界全体を弱めるので、私はまず `GM_addElement()` のみを試します。
+
+結論としては、
+
+> **Tampermonkey + UserScriptだけで完結する可能性は十分あります。まず `GM_addElement()` でニコニコiframeを直接挿入するのが最小構成です。これがCosense上で通らなければ、Tampermonkey自身のCSP変更機能を使う第二案があります。**
+
+なので、Chrome拡張を自作するところまで進む必要はまだありません。
+
+上のテストUserScriptを一度Cosenseで動かせば、かなり明確に切り分けられます。コンソールに出た結果が「表示された」か「`frame-src` エラー」かで、次の実装を決められます。
+
+User:
+TamperMonkey側は追加した
+UserScript側は?
+
+Assistant:
+UserScript側は、Tampermonkeyのダッシュボードから新規スクリプトを作って、以下をそのまま貼り付ければ大丈夫です。
+
+1. Chrome右上のTampermonkeyアイコンをクリック
+2. 「新規スクリプトを追加」
+3. 最初から入っている内容を全部削除
+4. 以下を貼り付ける
+5. `Ctrl+S` または `Cmd+S` で保存
+6. Scrapbox/Cosenseのページを再読み込み
+
+```js id="f0gxmm"
+// ==UserScript==
+// @name         Cosense Niconico Embed Test
+// @namespace    https://scrapbox.io/
+// @version      0.1
+// @description  Cosense上でニコニコ動画iframeを表示できるかテスト
+// @match        https://scrapbox.io/*
+// @grant        GM_addElement
+// ==/UserScript==
+
+(() => {
+    "use strict";
+
+    GM_addElement(document.body, "iframe", {
+        src: "https://embed.nicovideo.jp/watch/sm9",
+        style: `
+            width: 640px;
+            height: 360px;
+
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+
+            z-index: 999999;
+
+            border: none;
+            background: black;
+        `,
+        allow: "autoplay; fullscreen",
+        allowfullscreen: "true"
+    });
+})();
+```
+
+これはまだ「Scrapbox本文のニコニコURLを自動埋め込みするスクリプト」ではなく、まずCSPを突破できるかだけを見るテストです。
+
+正常なら、Scrapboxの右下にニコニコ動画の `sm9` プレイヤーが出ます。
+
+逆に出なければ、Chrome DevToolsのConsoleを開いて、
+
+```text id="0gnvwx"
+Refused to frame ...
+Content Security Policy ...
+frame-src ...
+```
+
+のようなエラーが出ていないか確認してください。
+
+まずここで「表示された / 表示されない」を切り分けるのが先です。表示できたら、その次に
+
+```text id="pt0vsz"
+[https://www.nicovideo.jp/watch/smXXXX]
+```
+
+を自動検出して、YouTubeと同じようにその場所へ埋め込むUserScriptにします。
+
+User:
+画面左下に常に動画プレイヤーが表示されるようになったぞ
+
+Assistant:
+それなら、最重要の切り分けは成功です。
+
+つまり現環境では、
+
+> `GM_addElement()` で `https://embed.nicovideo.jp/...` のiframeをCosense上に表示できる
+
+ことが確認できました。少なくとも今回の構成では、Cosenseの `frame-src` 制約をTampermonkey経由で回避できています。
+
+今表示されているのは動作確認用なので、次は固定表示をやめて、
+
+```text id="34plm5"
+[https://www.nicovideo.jp/watch/sm9]
+```
+
+のようなニコニコ動画URLをページ内から検出し、そのリンクの近くにプレイヤーを埋め込む処理に変えればよいです。
+
+構成としてはこうなります。
+
+```text id="dxj1pb"
+Cosenseページを開く
+↓
+ニコニコ動画へのリンクを探す
+↓
+smXXXX を抽出
+↓
+そのリンクの直下に
+GM_addElement(..., "iframe", ...)
+↓
+ニコニコ動画をインライン表示
+```
+
+したがって、もう「可能かどうか」の検証段階は終わっています。次は実用版UserScriptを書けます。
+
+特にCosenseはSPAなので、ページを開いた直後だけでなく、ページ遷移や編集中に新しく追加されたリンクも拾えるようにする必要があります。そこまで含めた完成版にするのが次です。
+
+User:
+描いて
+
+Assistant:
+はい。実用版はこれで試せます。
+
+```js id="d0jjwr"
+// ==UserScript==
+// @name         Cosense Niconico Embed
+// @namespace    https://scrapbox.io/
+// @version      1.0.0
+// @description  Cosense上のニコニコ動画リンクをインラインプレイヤーとして埋め込む
+// @match        https://scrapbox.io/*
+// @grant        GM_addElement
+// ==/UserScript==
+
+(() => {
+    "use strict";
+
+    const EMBED_CLASS = "tm-niconico-embed";
+
+    /**
+     * ニコニコ動画URLから動画IDを取得する
+     */
+    function getVideoId(urlString) {
+        try {
+            const url = new URL(urlString, location.href);
+
+            // https://www.nicovideo.jp/watch/sm9
+            if (
+                url.hostname === "www.nicovideo.jp" ||
+                url.hostname === "nicovideo.jp"
+            ) {
+                const match = url.pathname.match(/^\/watch\/([^/?#]+)/);
+                return match?.[1] ?? null;
+            }
+
+            // https://nico.ms/sm9
+            if (url.hostname === "nico.ms") {
+                const match = url.pathname.match(/^\/([^/?#]+)/);
+                return match?.[1] ?? null;
+            }
+
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 指定されたリンクの近くにプレイヤーを追加する
+     */
+    function embedPlayer(anchor) {
+        if (!(anchor instanceof HTMLAnchorElement)) {
+            return;
+        }
+
+        const videoId = getVideoId(anchor.href);
+
+        if (!videoId) {
+            return;
+        }
+
+        // このリンクはすでに処理済み
+        if (anchor.dataset.niconicoEmbedded === "true") {
+            return;
+        }
+
+        anchor.dataset.niconicoEmbedded = "true";
+
+        /*
+         * Cosenseではリンクが行内に存在するため、
+         * その行の直後にプレイヤーを置く。
+         */
+        const line = anchor.closest(".line") ?? anchor.parentElement;
+
+        if (!line) {
+            return;
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.className = EMBED_CLASS;
+
+        Object.assign(wrapper.style, {
+            width: "640px",
+            maxWidth: "100%",
+            aspectRatio: "16 / 9",
+            margin: "8px 0 12px 0",
+        });
+
+        line.insertAdjacentElement("afterend", wrapper);
+
+        GM_addElement(wrapper, "iframe", {
+            src: `https://embed.nicovideo.jp/watch/${encodeURIComponent(videoId)}`,
+
+            style: `
+                display: block;
+                width: 100%;
+                height: 100%;
+                border: 0;
+                background: #000;
+            `,
+
+            allow: "autoplay; fullscreen; picture-in-picture",
+            allowfullscreen: "true",
+            loading: "lazy",
+        });
+    }
+
+    /**
+     * DOMの中からニコニコ動画リンクを探す
+     */
+    function scan(root) {
+        if (!(root instanceof Element || root instanceof Document)) {
+            return;
+        }
+
+        if (root instanceof HTMLAnchorElement) {
+            embedPlayer(root);
+        }
+
+        root.querySelectorAll?.("a[href]").forEach(embedPlayer);
+    }
+
+    /*
+     * 初回表示
+     */
+    scan(document);
+
+    /*
+     * CosenseはSPAなので、
+     * ページ遷移や編集によって追加されたDOMも監視する。
+     */
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node instanceof Element) {
+                    scan(node);
+                }
+            }
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+    });
+})();
+```
+
+これで、
+
+```text id="xryud3"
+[https://www.nicovideo.jp/watch/sm9]
+```
+
+のようなリンクがCosenseページに存在すると、
+
+```text id="0z9a6a"
+ニコニコ動画のリンク
+
+┌──────────────────────┐
+│                      │
+│   ニコニコプレイヤー    │
+│                      │
+└──────────────────────┘
+```
+
+という形で、その行の直下にプレイヤーが出る想定です。
+
+`nico.ms` の短縮URLにも対応させています。
+
+また、CosenseはSPAなので、単にページ読み込み時だけ処理するのではなく `MutationObserver` でDOMの追加を監視しています。そのため、別ページへ移動した場合も原則として再検出されます。
+
+まずこれを現在のテストUserScriptと丸ごと入れ替えてください。もし「プレイヤー自体は出るが、変な位置に出る」という場合は、次に実際のCosense DOMに合わせて挿入位置だけ調整すればよいです。
+
+User:
+[画像添付]
+このようになった
+
+Assistant:
+この表示だけでは、まだ原因は確定できません。灰色の領域と壊れたページアイコンは「iframe要素そのものは作成できたが、その中身の読み込みに失敗した」状態です。
+
+ここでコードをいじる前に、まず何に失敗しているかを確認した方がよいです。前回の固定表示テストと今回の違いは、少なくとも「配置場所」と「周辺DOM」なので、CSPなのか、ニコニコ側の応答なのか、Cosenseの再描画なのかを分離します。
+
+Chrome DevTools → Console を開いた状態で、このページを再読み込みしてください。赤いエラーが出たら、その全文を貼ってください。特に次のどれかが出るはずです。
+
+```text id="kg67yy"
+Refused to frame ...
+Content Security Policy ...
+```
+
+または
+
+```text id="27avso"
+Refused to display ...
+X-Frame-Options ...
+```
+
+あるいは別のネットワークエラーです。
+
+加えて、Consoleでこれを実行してください。
+
+```js id="03g1ew"
+document.querySelector(".tm-niconico-embed iframe")?.src
+```
+
+期待値は、
+
+```text id="mk71u9"
+https://embed.nicovideo.jp/watch/sm9
+```
+
+です。
+
+もう一つ重要な点があります。現在ニコニコが案内しているプレイヤー埋め込みコードは、単純なiframeではなく、
+
+```html id="ajfldc"
+<script
+  src="https://embed.nicovideo.jp/watch/sm9/script?w=640&h=360">
+</script>
+```
+
+という形式です。2026年の実例でもこの形式が確認できます。([github.com](https://github.com/zenn-dev/zenn-community/issues/751?utm_source=chatgpt.com))
+
+一方、Tampermonkeyの `GM_addElement()` 自体は、指定した親要素の下に要素を挿入でき、CSP制約下での要素追加用途を公式に想定しています。([tampermonkey.net](https://www.tampermonkey.net/documentation.php?q=GM_addElement&utm_source=chatgpt.com))
+
+なので現時点では、
+
+```text id="rl5p66"
+iframe要素の生成
+→ 成功
+
+iframe内のページ読み込み
+→ 失敗
+
+原因
+→ まだ不明
+```
+
+です。
+
+なお一つ確認したいです。最初の「画面左下に常に表示された」テストでは、**実際にsm9の映像・再生ボタンまで表示されて再生できましたか？** それとも、今回と同じ灰色のiframe枠が左下に出ただけでしたか？
+
+ここはかなり重要です。前者なら今回のコード側の問題、後者なら `https://embed.nicovideo.jp/watch/sm9` をiframeとして使う前提自体を修正する必要があります。
+
+User:
+Framing 'https://embed.nicovideo.jp/' violates the following Content Security Policy directive: "frame-src 'self' www.google.com www.youtube.com player.vimeo.com anchor.fm podcasters.spotify.com creators.spotify.com open.spotify.com gyazo.com *.gyazo.com helpfeel-tweaks.helpfeel.com dashboard.helpfeel.com". The request has been blocked.
+
+これかな
+
+Assistant:
+はい、それです。原因が確定しました。
+
+`iframe` 自体は作れていますが、CosenseのCSPにある
+
+```text id="4xjuws"
+frame-src 'self' www.google.com www.youtube.com player.vimeo.com ...
+```
+
+に `embed.nicovideo.jp` が含まれていないため、ブラウザがニコニコのiframe読み込みを止めています。
+
+つまり今回分かったのは、
+
+```text id="vpfjji"
+GM_addElement() で iframe 要素を追加
+→ 成功
+
+https://embed.nicovideo.jp/ を iframe 内で読み込む
+→ Cosense の frame-src によって拒否
+```
+
+です。
+
+なので、前に私が「`GM_addElement()` だけでCSPを回避できる可能性が高い」と言った部分は、この実環境では誤りでした。`GM_addElement()` だけでは `frame-src` を突破できません。
+
+次に試すべきなのは、Tampermonkey側の設定です。Tampermonkeyは現在、ページのCSPをデフォルトでは緩和しませんが、公式changelogに、
+
+> `Modify existing content security policy (CSP) headers` を `Yes` にすると以前の挙動に戻せる
+
+と明記されています。([tampermonkey.net](https://www.tampermonkey.net/changelog.php?more=true&old=&show=mfdh&utm_source=chatgpt.com))
+
+Tampermonkeyの
+
+```text id="xvnmpm"
+Dashboard
+→ Settings
+→ Config mode: Advanced
+```
+
+にして、
+
+```text id="wjr524"
+Modify existing content security policy (CSP) headers
+```
+
+を探し、
+
+```text id="kd03c9"
+Yes
+```
+
+にしてください。
+
+その後、Cosenseページを完全に再読み込みします。
+
+UserScript側は、今のコードのままでまず構いません。
+
+成功すると、Consoleから今の
+
+```text id="5jq9ps"
+Framing 'https://embed.nicovideo.jp/' violates ...
+```
+
+が消え、ニコニコプレイヤーが表示されるはずです。
+
+逆に、この設定を `Yes` にしても同じ `frame-src` エラーが残るなら、その時点でTampermonkeyが現行Chrome上でCosenseのCSPをどのように書き換えているかをNetworkタブで確認します。そこまでやれば「Tampermonkeyだけで可能か」をかなり確実に判定できます。
+
+User:
+[画像添付]
+どこ？
+
+Assistant:
+その画面は「個別スクリプトの設定」です。探している項目はそこにはありません。
+
+画面上部の黒いバーにある、こちらの「設定」をクリックしてください。
+
+```text id="37sdmy"
+インストール済みユーザー スクリプト
+        ↓
+       設定   ← こっち
+```
+
+今開いている、
+
+```text id="4shlbi"
+Cosense Niconico Embed
+  └─ エディター
+  └─ 設定
+```
+
+の「設定」ではありません。
+
+Tampermonkey全体の「設定」を開いたら、まず「設定モード / Config mode」を「上級者 / Advanced」に変更します。その後、ページ内検索 `Cmd + F` で、
+
+```text id="n3mqjh"
+content security
+```
+
+または
+
+```text id="ro5k72"
+CSP
+```
+
+を検索してください。
+
+探す項目は英語表記なら、
+
+```text id="xfu1q0"
+Modify existing content security policy (CSP) headers
+```
+
+です。これを `Yes` にします。
+
+この設定が存在することと、`Yes` にすると従来のCSP緩和動作に戻ることはTampermonkey公式の変更履歴にも明記されています。([tampermonkey.net](https://www.tampermonkey.net/changelog.php?locale=en&more=true&old=&show=iikm&utm_source=chatgpt.com))
+
+つまり手順は、
+
+```text id="s6tn2t"
+上部の「設定」
+↓
+設定モード → 上級者
+↓
+Cmd + F → "CSP"
+↓
+Modify existing content security policy (CSP) headers
+↓
+Yes
+↓
+Cosenseを完全リロード
+```
+
+です。
+
+User:
+[画像添付]
+これ？
+
+Assistant:
+はい、それです。
+
+画像のこの項目です。
+
+```text id="ru9sf9"
+既存のコンテンツ セキュリティ ポリシー (CSP) を修正:
+```
+
+現在は、
+
+```text id="ci6yz3"
+自動
+```
+
+になっています。
+
+これを、
+
+```text id="pdt147"
+はい
+```
+
+に変更してください。Tampermonkey公式でも、現在はCSPをデフォルトでは緩和しなくなっており、以前の挙動に戻すにはこの設定を `Yes` にするよう案内されています。([tampermonkey.net](https://www.tampermonkey.net/changelog.php?more=true&old=&show=mfdh&utm_source=chatgpt.com))
+
+その後、Cosenseのページを完全リロードしてください。Macなら通常、
+
+```text id="k0c15b"
+Cmd + Shift + R
+```
+
+で強制再読み込みできます。
+
+そのうえで、もう一度Consoleを見て、
+
+```text id="w8mpda"
+Framing 'https://embed.nicovideo.jp/' violates ...
+```
+
+が消えたか確認してください。
+
+もし消えなければ、その次はこのプルダウンに「完全に削除」に相当する選択肢があるか確認します。まずは `自動 → はい` で十分です。
+
+User:
+[画像添付]
+この3択だぞ
+
+Assistant:
+そうです。現行のTampermonkey 5.5系では、私が先ほど言った「はい」という選択肢はありません。古いバージョンの表記をそのまま案内していました。
+
+あなたの画面では、
+
+- `自動`：Tampermonkeyが必要に応じてCSPを調整
+- `完全に削除（おそらくセキュアではありません）`：対象ページのCSPを除去
+- `いいえ`：CSPを変更しない
+
+の3択です。Tampermonkey公式changelogにも「userscriptを実行する場合にCSPを完全に削除するオプション」が追加されたと記載されています。([tampermonkey.net](https://www.tampermonkey.net/changelog.php?locale=en&more=true&old=&show=iikm&utm_source=chatgpt.com))
+
+そして、いま `自動` の状態で実際に
+
+```text id="9ny347"
+Framing 'https://embed.nicovideo.jp/' violates ...
+frame-src ...
+```
+
+が出たので、`自動` では今回の `frame-src` は緩和されていません。
+
+したがって、切り分け目的では一度、
+
+```text id="6w12qj"
+既存のコンテンツ セキュリティ ポリシー (CSP) を修正
+↓
+完全に削除（おそらくセキュアではありません）
+```
+
+を選んでください。
+
+その後、
+
+1. Cosenseを `Cmd + Shift + R` で完全リロード
+2. ニコニコ埋め込みページを開く
+3. プレイヤーが表示されるか確認
+4. Consoleの `Framing ... violates ... frame-src` が消えたか確認
+
+です。
+
+これで再生できれば、
+
+```text id="exk3c4"
+ニコニコiframe自体
+→ 問題なし
+
+UserScriptの挿入処理
+→ 問題なし
+
+唯一の障害
+→ CosenseのCSP
+```
+
+まで確定します。
+
+ただし、「完全に削除」は名前どおりCSPというセキュリティ機構を無効化する強い設定です。Tampermonkey公式自身もUI上で「おそらくセキュアではありません」と警告しています。したがって、まずは**原因確認のためのテストとして使う**のがよいです。
+
+これで動いたら、次は「CSPを丸ごと消さずに、`embed.nicovideo.jp` だけ許可する方法がTampermonkey＋UserScriptの範囲で作れないか」を調べるのが適切です。
+
+User:
+なんか出来たり出来なかったりするな
+
+Assistant:
+あり得ます。今の段階では「UserScriptのDOM処理」と「TampermonkeyによるCSP除去」を分けて確認した方がいいです。
+
+特に怪しいのはCSP側です。Tampermonkey 5.5系ではCSPの扱いが変更されており、通常はCSPを緩和しない設計になっています。「完全に削除」は別途用意された強制オプションです。([tampermonkey.net](https://www.tampermonkey.net/changelog.php?more=true&old=&show=mfdh&utm_source=chatgpt.com))
+
+次に「できなかった」状態になった瞬間、Consoleだけ見てください。
+
+もし再び
+
+```text id="ll6kdx"
+Framing 'https://embed.nicovideo.jp/' violates ...
+Content Security Policy ...
+frame-src ...
+```
+
+が出ているなら、
+
+> UserScriptの問題ではなく、そのページロードではTampermonkeyによるCSP除去が効いていない
+
+と切り分けられます。
+
+逆にCSPエラーが一切ないのにプレイヤーが消える・出ないなら、今度は私が書いたUserScript側の問題です。CosenseはSPAでDOMを頻繁に作り直すので、現在のコードには実際に脆いところがあります。
+
+特にここです。
+
+```js id="y154aq"
+if (anchor.dataset.niconicoEmbedded === "true") {
+    return;
+}
+
+anchor.dataset.niconicoEmbedded = "true";
+```
+
+この方式だと、Cosense側の再描画によって
+
+```text id="jrfepg"
+リンク要素は残った
+↓
+こちらが追加したプレイヤーだけ消された
+↓
+リンクには data-niconico-embedded="true" が残っている
+↓
+UserScriptは「もう処理済み」と判断
+↓
+プレイヤーを再生成しない
+```
+
+という状態が起こり得ます。
+
+したがって、「できたりできなかったり」には少なくとも2種類あります。
+
+```text id="vuc43c"
+A. 灰色のiframe + CSPエラー
+   → Tampermonkey/CSP側
+
+B. プレイヤー自体が出ない・途中で消える
+   + CSPエラーなし
+   → UserScriptのDOM追従側
+```
+
+ここをまず見たいです。
+
+できなかった瞬間にConsoleを見て、以前の
+
+```text id="9ww89r"
+Framing 'https://embed.nicovideo.jp/' violates ...
+```
+
+が出ているかどうかだけ教えてください。
+
+出ていなければ、次はUserScriptを修正します。今の実装を継ぎ足すより、Cosenseの再描画を前提にして「プレイヤーが実在するか毎回確認し、消えていたら復元する」方式へ変えた方が安定します。
+
+User:
+Cmd+Shift+Rでリロードしたら再生できるが、その後通常のリロードをもう一度行うと再生できなくなる
+
+Assistant:
+その挙動なら、かなり有力なのは「CosenseのService Worker / キャッシュ経由だと、TampermonkeyのCSP除去が効かない」というケースです。
+
+Chromeの拡張機能によるレスポンスヘッダ変更は、通常のネットワークレスポンスやHTTPキャッシュには適用できますが、Service Worker自身が生成したレスポンスや `CacheStorage` から返されたレスポンスには適用されない場合があります。Chrome公式にもその制約が明記されています。([developer.chrome.com](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest?hl=ja&utm_source=chatgpt.com))
+
+そしてCosenseは実際にService Workerを使っており、ページ遷移高速化・オフライン動作・キャッシュなどに利用しています。([scrapbox.io](https://scrapbox.io/help-enterprise-jp/ServiceWorker?utm_source=chatgpt.com))
+
+なので、今の現象はこう説明できます。
+
+```text id="zlu6vs"
+Cmd + Shift + R
+→ キャッシュを無視してネットワークから取得
+→ TampermonkeyがCSPヘッダを削除できる
+→ ニコニコiframeが動く
+
+通常のリロード
+→ Service Worker / CacheStorage経由で返る
+→ TampermonkeyのCSPヘッダ変更を通らない
+→ 元のCosense CSPが復活
+→ embed.nicovideo.jp が拒否される
+```
+
+これは、Chromeがハードリロード時にキャッシュを無視してネットワークから取得する仕様とも整合します。([developer.chrome.com](https://developer.chrome.com/docs/devtools/network?utm_source=chatgpt.com))
+
+かなり簡単に確定できます。
+
+DevToolsを開いて、
+
+```text id="z9nsm2"
+Application
+→ Service Workers
+```
+
+へ行き、`scrapbox.io` のService Workerに対して
+
+```text id="n6yfw9"
+Bypass for network
+```
+
+をONにしてください。
+
+これは「Service Workerを無視してネットワークから読み込む」ためのデバッグ機能です。Chrome DevTools Protocolにも `setBypassServiceWorker` として用意されています。([chromedevtools.github.io](https://chromedevtools.github.io/devtools-protocol/1-3/Network/?utm_source=chatgpt.com))
+
+その状態で、
+
+```text id="7pvt1f"
+普通の Cmd + R
+↓
+ニコニコ動画が毎回表示されるか確認
+```
+
+してください。
+
+これで通常リロードでも安定して再生できるようになれば、原因はほぼ確定です。
+
+つまりUserScript側ではなく、
+
+> `Cosense Service Worker → CSP付きキャッシュレスポンス → TampermonkeyのCSP除去を迂回`
+
+が問題です。
+
+この場合、「Tampermonkey + UserScriptだけで実用運用する」という方針は少し厳しくなります。毎回ハードリロードするのは現実的ではありませんし、Service Workerを常時無効にするとCosense本来の高速化やオフライン機能に影響します。
+
+まず `Bypass for network` をONにして通常リロードを数回試してください。ここで100%安定するなら、次に「Service Workerを殺さずに安定させる方法」を考えます。
+
+User:
+Bypass for networkをオンにするとできる
+
+Assistant:
+それなら、原因はかなり明確です。
+
+`Bypass for network` を有効にすると通常リロードでも再生できる一方、無効だと通常リロードでCSPに引っかかるので、問題はCosenseのService Worker経由のレスポンスにあります。
+
+Chrome公式仕様でも、拡張機能によるネットワーク書き換えは、Service Workerが生成したレスポンスや `CacheStorage` から返したレスポンスには適用されません。([developer.chrome.com](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest?hl=ja&utm_source=chatgpt.com)) Cosense自身もService Workerをページ遷移高速化・オフライン表示・キャッシュに利用しています。([scrapbox.io](https://scrapbox.io/help-enterprise-jp/ServiceWorker?utm_source=chatgpt.com))
+
+つまり今の挙動は、
+
+```text id="t4cnyf"
+通常リロード
+↓
+Cosense Service Worker / CacheStorage
+↓
+元のCSPが残ったレスポンス
+↓
+embed.nicovideo.jp が frame-src で拒否
+
+Bypass for network ON
+↓
+Service Workerを迂回
+↓
+ネットワークレスポンス
+↓
+TampermonkeyがCSPを除去
+↓
+ニコニコiframeが表示される
+```
+
+と説明できます。
+
+したがって、今の「TampermonkeyのCSP完全削除」に依存する方式は、実用上あまり安定しません。ハードリロードやDevToolsの `Bypass for network` が必要になるからです。
+
+今後の選択肢は実質3つあります。
+
+1. `Bypass for network` を常用する  
+   動きますが、DevTools依存なので実用向きではありません。
+
+2. CosenseのService Workerを無効化・登録解除する  
+   Tampermonkeyだけで完結できる可能性があります。ただしCosenseのprefetch、オフラインモード、assets cacheなどの機能を失います。([scrapbox.io](https://scrapbox.io/help-enterprise-jp/ServiceWorker?utm_source=chatgpt.com))
+
+3. CSPを触らず、拡張機能自身のページを中継iframeにする  
+   以前説明した
+
+```text id="v3irip"
+Cosense
+  ↓
+chrome-extension://.../player.html
+  ↓
+embed.nicovideo.jp
+```
+
+方式です。これが一番きれいです。CosenseのService WorkerやCSPを書き換える必要がないので、リロード方法にも依存しません。
+
+ただ、「何としてもTampermonkey + UserScriptだけで完結させたい」なら、次に試す価値があるのは2です。
+
+UserScriptから、
+
+```js id="8nmv09"
+navigator.serviceWorker.getRegistrations().then(registrations => {
+    for (const registration of registrations) {
+        registration.unregister();
+    }
+});
+```
+
+としてScrapboxのService Workerを登録解除する方法です。
+
+ただし、いきなりこれを採用するのではなく、まずDevToolsの
+
+```text id="ygla8a"
+Application
+→ Service Workers
+→ Unregister
+```
+
+で手動登録解除してから、DevToolsを閉じて通常リロードを数回行い、ニコニコ埋め込みが安定するか確認するのがよいです。
+
+これで安定すれば、
+
+> 「Tampermonkey + UserScriptだけで完結させるには、CosenseのService WorkerをUserScriptから無効化する」
+
+という構成が成立する可能性が高いです。
+
+ただしCosenseが起動時に再登録する可能性があるので、そこも実際の挙動を確認してからコード化した方がいいです。
+
+User:
+3の場合、どのような構成になる？
+
+Assistant:
+3の場合は、TampermonkeyのCSP削除に頼らず、専用の小さなChrome拡張を1つ作る構成です。
+
+全体像はこうなります。
+
+```text id="9oluqr"
+Cosense
+│
+│  content.js がニコニコURLを検出
+│
+▼
+<iframe src="chrome-extension://拡張ID/player.html?id=sm9">
+│
+│  ここから先はCosenseではなく「拡張機能ページ」
+│
+▼
+player.html
+│
+│  <iframe src="https://embed.nicovideo.jp/watch/sm9">
+│
+▼
+ニコニコ動画プレイヤー
+```
+
+重要なのは、Cosenseから直接
+
+```text id="vvqa9o"
+Cosense
+→ embed.nicovideo.jp
+```
+
+としないことです。今はここがCosenseの
+
+```text id="weqolm"
+frame-src ...
+```
+
+に弾かれています。
+
+代わりに、
+
+```text id="jtu6wt"
+Cosense
+→ Chrome拡張内の player.html
+→ embed.nicovideo.jp
+```
+
+とします。
+
+Chrome拡張内のHTMLを `web_accessible_resources` として公開すれば、Webページから `chrome-extension://.../player.html` に遷移できます。Chrome公式でもこの用途が定義されています。([developer.chrome.com](https://developer.chrome.com/docs/extensions/reference/manifest/web-accessible-resources?hl=en&utm_source=chatgpt.com)) またWebExtensionのweb-accessible resourceは通常のページ側CSPに阻まれない仕組みになっています。([developer.mozilla.org](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/web_accessible_resources?utm_source=chatgpt.com))
+
+ファイル構成は最小でこうです。
+
+```text id="28bfyd"
+cosense-niconico/
+├── manifest.json
+├── content.js
+├── player.html
+└── player.js
+```
+
+`manifest.json` は概念的にはこうなります。
+
+```json id="325hcr"
+{
+  "manifest_version": 3,
+  "name": "Cosense Niconico Embed",
+  "version": "1.0.0",
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://scrapbox.io/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "player.html",
+        "player.js"
+      ],
+      "matches": [
+        "https://scrapbox.io/*"
+      ]
+    }
+  ],
+
+  "content_security_policy": {
+    "extension_pages":
+      "script-src 'self'; object-src 'self'; frame-src https://embed.nicovideo.jp;"
+  }
+}
+```
+
+Chrome拡張ページにはCosenseとは別のCSPが適用されます。Manifest V3では拡張ページ用CSPを設定できるため、そこで `embed.nicovideo.jp` を `frame-src` に許可します。([developer.chrome.com](https://developer.chrome.com/docs/extensions/reference/manifest/content-security-policy?utm_source=chatgpt.com))
+
+`content.js` はCosense上のニコニコURLを探します。
+
+```js id="udgoit"
+const videoId = "sm9";
+
+const iframe = document.createElement("iframe");
+
+iframe.src = chrome.runtime.getURL(
+    `player.html?id=${encodeURIComponent(videoId)}`
+);
+
+iframe.style.width = "640px";
+iframe.style.height = "360px";
+iframe.style.border = "0";
+
+container.appendChild(iframe);
+```
+
+ここで重要なのが、
+
+```js id="fw66n7"
+chrome.runtime.getURL("player.html")
+```
+
+です。
+
+例えば実際には、
+
+```text id="zxmu70"
+chrome-extension://abcdefghijk/player.html?id=sm9
+```
+
+のようなURLになります。
+
+そして `player.html` は、
+
+```html id="w0dv5m"
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        html,
+        body,
+        iframe {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <iframe
+        id="player"
+        allow="autoplay; fullscreen"
+        allowfullscreen>
+    </iframe>
+
+    <script src="player.js"></script>
+</body>
+</html>
+```
+
+`player.js` が、
+
+```js id="x3s66a"
+const params = new URLSearchParams(location.search);
+const id = params.get("id");
+
+if (/^[A-Za-z0-9_-]+$/.test(id)) {
+    document.getElementById("player").src =
+        `https://embed.nicovideo.jp/watch/${encodeURIComponent(id)}`;
+}
+```
+
+とニコニコを読み込みます。
+
+ポイントはCSPの適用関係です。
+
+```text id="f44iuv"
+┌ Cosense ─────────────────────────────┐
+│                                      │
+│  Cosense CSP                         │
+│                                      │
+│  ┌ Chrome Extension iframe ───────┐ │
+│  │                                 │ │
+│  │ Extension側CSP                  │ │
+│  │                                 │ │
+│  │ ┌ Niconico iframe ───────────┐ │ │
+│  │ │                            │ │ │
+│  │ │ ニコニコ動画                │ │ │
+│  │ │                            │ │ │
+│  │ └────────────────────────────┘ │ │
+│  └─────────────────────────────────┘ │
+│                                      │
+└──────────────────────────────────────┘
+```
+
+つまり現在問題になっている
+
+```text id="ygc9ln"
+Cosense CSP
+    frame-src
+        ↓
+embed.nicovideo.jp ❌
+```
+
+という直接関係をなくします。
+
+さらにこの方式なら、
+
+```text id="hvs63g"
+Cmd + Shift + Rなら動く
+通常リロードだと動かない
+```
+
+というService Workerとの競合も基本的になくなります。CosenseのCSPレスポンスヘッダを変更する必要がないからです。
+
+現在のTampermonkey方式との違いはかなり明確です。
+
+| | Tampermonkey方式 | 拡張iframe方式 |
+|---|---|---|
+| Cosense CSPを変更 | 必要 | 不要 |
+| Service Workerの影響 | 受ける | 原則受けない |
+| CSP完全削除 | 必要になっている | 不要 |
+| 通常リロード | 不安定 | 安定する見込み |
+| DevTools Bypass | 必要になる | 不要 |
+| 導入 | Tampermonkeyだけ | 自作拡張を1回インストール |
+
+なので、今回の状況まで分かった段階では、こちらの構成の方が筋がいいです。
+
+しかも「大規模な拡張」を作る必要はありません。実質的には、今のUserScriptがやっている「ニコニコURL検出部分」を `content.js` に移して、その間に `player.html` を1枚挟むだけです。
+
+必要なら次に、今使っているUserScriptの機能をそのまま移植した、**Chromeの「パッケージ化されていない拡張機能を読み込む」で即試せる4ファイルの完成版**を書けます。
+
+User:
+OK.
+その前に、以前のTampermonkeyの方法について完結にまとめて
+
+Assistant:
+以前のTampermonkey方式は、要するに次の構成です。
+
+```text id="qsob40"
+Cosense
+↓
+Tampermonkey UserScript
+↓
+ニコニコ動画URLを検出
+↓
+iframeを挿入
+↓
+https://embed.nicovideo.jp/watch/...
+```
+
+通常はCosenseのCSPで、
+
+```text id="kttzuz"
+frame-src ...
+```
+
+に `embed.nicovideo.jp` が含まれていないため、iframeの読み込みが拒否されます。
+
+そこでTampermonkey側の設定で、
+
+```text id="hfsj9c"
+既存のコンテンツ セキュリティ ポリシー (CSP) を修正
+→ 完全に削除
+```
+
+を選び、CosenseのCSPを除去します。
+
+これにより、UserScriptからニコニコ動画をiframeで埋め込めるようになります。
+
+ただし、CosenseはService Workerを利用しているため、
+
+```text id="0w4xgd"
+通常リロード
+→ Service Worker / CacheStorage経由
+→ TampermonkeyのCSP除去が効かない場合がある
+→ ニコニコ埋め込み失敗
+```
+
+という問題がありました。
+
+一方、
+
+```text id="abzecg"
+Cmd + Shift + R
+```
+
+によるハードリロードや、DevToolsの
+
+```text id="ohdlh3"
+Application
+→ Service Workers
+→ Bypass for network
+```
+
+を有効にすると、ネットワーク経由になるためCSP除去が効き、安定して再生できました。
+
+つまり結論は、
+
+> Tampermonkey + UserScriptだけでもニコニコ動画の埋め込みは可能。ただし、CosenseのService WorkerとTampermonkeyのCSP除去が競合するため、通常リロードでは不安定。
+
+という方式です。
+
+そのため、実験用途なら使えますが、常用する方法としては「CSPを変更しないChrome拡張方式」の方が適しています。
+
+User:
+この案の場合、iOS/Androidには対応できない？
+
+Assistant:
+Tampermonkey案のことなら、**iOS/Androidとも完全に不可能ではありません**。ただし、今回の「CosenseのCSPを削除してニコニコiframeを直接入れる」という方式が、そのまま全端末で安定動作するとは考えない方がよいです。
+
+Tampermonkey自体は現在、公式に以下をサポートしています。
+
+| 環境 | Tampermonkey | 今回の方式 |
+|---|---|---|
+| iOS Safari | ○ | △ |
+| Android Firefox | ○ | △〜○ |
+| Android Edge | ○ | △〜○ |
+| Android Chrome | 基本× | × |
+| Desktop Chrome | ○ | ○ ※Service Worker問題あり |
+
+Tampermonkey公式は、`Safari iOS`、`Firefox Android`、さらにAndroid版Edgeを正式なモバイル環境として案内しています。([tampermonkey.net](https://www.tampermonkey.net/faq.php?q=Q406&utm_source=chatgpt.com))
+
+問題はTampermonkeyの有無ではなく、**CSP削除機能**です。
+
+今回Desktop Chromeでやっているのは、
+
+```text id="t7o15t"
+CosenseのHTTPレスポンス
+
+Content-Security-Policy:
+  frame-src 'self' youtube.com ...
+
+        ↓ Tampermonkeyが変更
+
+CSPを削除
+
+        ↓
+
+embed.nicovideo.jp をiframe表示
+```
+
+という、かなりブラウザ実装依存の処理です。
+
+特にiOSは厳しいです。AppleのSafari Web Extension自体はiOS 15以降で使えますが、AppleはiOS Safari Web Extensionでは `webRequest` がサポートされないと明記しています。つまり、Desktop Chromeと同じように「レスポンスヘッダを書き換えてCSPを消す」処理をそのまま移植できるとは限りません。([developer.apple.com](https://developer.apple.com/documentation/safariservices/safari-web-extensions?changes=_5&utm_source=chatgpt.com))
+
+一方Androidは比較的可能性があります。TampermonkeyはFirefox Androidを正式サポートしていますし、Android版EdgeについてもTampermonkey公式が導入手順を案内しています。([tampermonkey.net](https://www.tampermonkey.net/faq.php?q=Q406&utm_source=chatgpt.com))
+
+ただしAndroidでも、
+
+```text id="atz4xo"
+通常ロード
+↓
+Cosense Service Worker
+↓
+CSP付きCacheStorageレスポンス
+```
+
+という今回Desktop Chromeで踏んだ問題が発生する可能性があります。
+
+したがって、Tampermonkey案の位置づけはこうです。
+
+```text id="ituvdd"
+PC
+→ 実現できた
+→ ただしService Worker対策が必要
+
+Android
+→ Tampermonkey自体は使える
+→ 実機検証すれば実現する可能性あり
+
+iOS
+→ Tampermonkey自体は使える
+→ しかしCSP削除部分が大きな問題
+→ 同じ方法がそのまま動くとは期待しにくい
+```
+
+もし最終目標が
+
+> 「Mac / Windows / iPhone / AndroidのどこからCosenseを開いても、ニコニコ動画がYouTubeのように埋め込まれる」
+
+なら、**Tampermonkey＋CSP削除を共通方式にするのはあまり適していません。**
+
+なお、先ほどの「中継用Chrome拡張」案についても、Android/iOSまで考えるとそのままではありません。iOSではSafari Web ExtensionとしてXcodeでパッケージングする必要があります。Appleは既存のChrome/Firefox系WebExtensionをSafari Web Extensionへ変換する仕組みを提供しているので、**共通のWebExtensionコードをベースに、PC/Android/iOSそれぞれに配布する**構成なら現実的です。([developer.apple.com](https://developer.apple.com/documentation/SafariServices/safari-web-extensions?utm_source=chatgpt.com))
+
+つまりクロスプラットフォームまで視野に入れるなら、
+
+```text id="kuyvc5"
+共通の埋め込み処理
+        │
+        ├─ Chrome/Edge extension
+        ├─ Firefox extension
+        └─ iOS Safari Web Extension
+```
+
+という方向の方が筋が良いです。
+
+User:
+iOSのUserScriptsとかだと無理？
+
+Assistant:
+iOSの「Userscripts」アプリを使う案なら、**UserScript自体を動かすことはできますが、今回のニコニコ埋め込み問題はそのままでは解決できません**。
+
+理由は、今回詰まっているのがJavaScript実行そのものではなく、Cosenseの
+
+```text id="txac16"
+frame-src ...
+```
+
+によるiframe制限だからです。
+
+iOSのUserscriptsはSafari上でUserScriptを実行できます。公式リポジトリでもiOS 15.1以降をサポートしています。([github.com](https://github.com/quoid/userscripts?utm_source=chatgpt.com))
+
+ただし、たとえばUserScriptから
+
+```js id="ov6b8d"
+const iframe = document.createElement("iframe");
+iframe.src = "https://embed.nicovideo.jp/watch/sm9";
+document.body.appendChild(iframe);
+```
+
+としても、最終的にはCosenseのページ内にiframeを追加しているだけなので、
+
+```text id="9tvzf4"
+Cosense
+  ↓
+iframe → embed.nicovideo.jp
+```
+
+という関係は変わりません。
+
+そのためSafariもCosenseの
+
+```text id="ivfc4d"
+Content-Security-Policy:
+frame-src 'self' www.youtube.com ...
+```
+
+を適用し、`embed.nicovideo.jp` を拒否します。
+
+さらに、Userscriptsプロジェクト自身も現在CSPを課題として扱っています。公式READMEでは、Safariでは厳しいCSPを完全には回避できない場合があると説明されています。([github.com](https://github.com/quoid/userscripts?utm_source=chatgpt.com)) そして2026年8月2日にも、CSP bypassを実装できないかというIssueが新たに立っており、現在も「enhancement / feature work」の段階です。([github.com](https://github.com/quoid/userscripts/issues/954?utm_source=chatgpt.com))
+
+特に重要なのは、
+
+> 「UserScriptのコードをCSPに関係なく実行する」
+
+ことと、
+
+> 「ページの `frame-src` を無視して任意のiframeを表示する」
+
+ことは別問題だという点です。
+
+前者についてはSafari WebExtensionの `scripting.executeScript()` 等を使った改善が検討されています。([github.com](https://github.com/quoid/userscripts/issues/954?utm_source=chatgpt.com))
+
+しかし今回必要なのは後者です。
+
+したがって、
+
+```text id="vcdqau"
+iOS Safari
+↓
+Userscripts
+↓
+UserScript
+↓
+Cosense DOMにニコニコiframe追加
+```
+
+だけでは、かなり高い確率でDesktopと同じ
+
+```text id="y1hlga"
+Framing 'https://embed.nicovideo.jp/'
+violates Content Security Policy directive "frame-src ..."
+```
+
+になります。
+
+一方で、少し事情が変わるのが「UserScript」ではなく「自作Safari Web Extension」まで許容する場合です。
+
+現在のSafari Web Extensionは `declarativeNetRequest` をサポートしており、Safari 16.4以降では `modifyHeaders` も利用できます。Apple公式にも、拡張機能からHTTPヘッダを追加・削除・変更できるとあります。([developer.apple.com](https://developer.apple.com/documentation/safariservices/blocking-content-with-your-safari-web-extension?utm_source=chatgpt.com))
+
+つまり理論上、
+
+```text id="9jht8e"
+iOS Safari
+↓
+自作Safari Web Extension
+↓
+CosenseのCSPヘッダを調整
+↓
+ニコニコiframe
+```
+
+は可能性があります。
+
+ただしこれはもう「Userscriptsアプリに `.user.js` を1本入れるだけ」ではありません。
+
+整理すると、
+
+| iOS方式 | 実現性 |
+|---|---|
+| Userscripts + 普通のUserScript | UserScript実行は○、ニコニコiframeはCSPで×の可能性が高い |
+| Userscripts側が将来CSP bypass対応 | 将来的には可能性あり |
+| 自作Safari Web Extension | ○の可能性が高い |
+| Cosense公式がニコニコを `frame-src` に追加 | ○ |
+
+なので、**「PCではTampermonkey、iPhoneではUserscriptsに同じUserScriptを入れる」だけで完全クロスプラットフォーム化する案は、現在のCSPがある限り難しい**です。
+
+ただし、実機でUserscriptsを既に使えるなら、Desktopで使った最小iframeテストをiPhoneでも一度実行する価値はあります。Safari/Userscripts固有の処理で偶然通る余地を理論上ゼロとは言い切れません。現時点の資料からは、通ると期待する根拠は弱いです。
+
+User:
+うーん、僕はMacとiPhone、iPad全てでニコニコ埋め込みを行う、視聴できるようにしないと意味がないと思っています。
+これを実現する方法はないの？
+
+Assistant:
+あります。Mac・iPhone・iPadの3台すべてで使うことを条件にすると、現実的な方法は3つに絞れます。
+
+一番きれいなのは、Helpfeel側に `embed.nicovideo.jp` をCosenseの `frame-src` に追加してもらう方法です。現在Cosenseは動画埋め込みとしてYouTube/Vimeo等だけを正式対応しており、ニコニコは未対応です。([scrapbox.io](https://scrapbox.io/help-jp/%E5%8B%95%E7%94%BB%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80?utm_source=chatgpt.com)) またCosenseコミュニティでも、「iframeはCSPをどうにかしてもらわないと使えない」と明示的に指摘されています。([scrapbox.io](https://scrapbox.io/forum-jp/Content_Security_Policy%E3%82%92%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%9E%E3%82%A4%E3%82%BA%E3%81%97%E3%81%9F%E3%81%84?utm_source=chatgpt.com))
+
+これが実現すれば、Cosense自身のUserScriptだけで済みます。CosenseのUserScriptは自分のプロフィールページの `script.js` に置かれ、プロジェクト読み込み時に実行される仕組みなので、ブラウザごとにTampermonkeyを入れる必要がありません。([scrapbox.io](https://scrapbox.io/help-jp/UserScript?utm_source=chatgpt.com)) iOS Safari自体もCosenseの対応ブラウザです。([scrapbox.io](https://scrapbox.io/help-jp/%E5%AF%BE%E5%BF%9C%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6?utm_source=chatgpt.com))
+
+構成は単純です。
+
+```text id="q15f5q"
+Mac / iPhone / iPad
+        ↓
+Cosense標準UserScript
+        ↓
+ニコニコURLを検出
+        ↓
+<iframe src="https://embed.nicovideo.jp/watch/sm...">
+```
+
+ただし、これはHelpfeel側の変更が必要です。
+
+自分だけで完結させるなら、次に現実的なのがSafari Web Extensionです。AppleはSafari Web ExtensionをmacOS・iOS・iPadOSで共通のHTML/CSS/JavaScriptコードから作れる仕組みとして提供しています。([developer.apple.com](https://developer.apple.com/safari/extensions/?utm_source=chatgpt.com)) Safari 16.4以降では、Web Extensionの `declarativeNetRequest` からレスポンスヘッダを変更する `modifyHeaders` も使えます。([developer.apple.com](https://developer.apple.com/documentation/safariservices/blocking-content-with-your-safari-web-extension?changes=_3%2C_3&language=objc%2Cobjc&utm_source=chatgpt.com))
+
+つまり1つの拡張を作って、
+
+```text id="cdfbtp"
+Safari Web Extension
+        │
+        ├─ Mac Safari
+        ├─ iPhone Safari
+        └─ iPad Safari
+
+scrapbox.io のCSPを調整
+        ↓
+embed.nicovideo.jp を許可
+        ↓
+ニコニコiframeを挿入
+```
+
+という構成にできます。
+
+Apple自身、Safari Web ExtensionはiOS/macOS間で同期可能としています。([developer.apple.com](https://developer.apple.com/documentation/SafariServices/syncing-safari-web-extensions-across-devices-and-platforms?utm_source=chatgpt.com))
+
+ただし、これは今のTampermonkey方式と同じく「CosenseのCSPを書き換える」系統なので、Service Workerとの相互作用は実機検証が必要です。Safariはページに拡張が追加した要素にもページCSPを適用する挙動が報告されているため、単純にextension iframeを挟むだけでは十分でない可能性があります。([developer.apple.com](https://developer.apple.com/go/?ext=true&id=wwdc26-web-extensions-q-and-a&utm_source=chatgpt.com))
+
+そして、もう一つかなり面白い方法があります。
+
+「ニコニコ公式プレイヤーでなくても、Cosense内で動画を視聴できればよい」のであれば、CSPを一切変更しない方法が作れます。
+
+現在のCosenseのCSPは、
+
+```text id="1ub84w"
+frame-src ...
+```
+
+については厳しい一方、
+
+```text id="tom4vr"
+media-src *
+```
+
+になっています。2026年の実際のCosenseレスポンスでも確認できます。([urlscan.io](https://urlscan.io/result/019bd548-f52d-7647-8735-f2d0cbff6355?utm_source=chatgpt.com))
+
+つまり、
+
+```html id="ftuo27"
+<iframe src="https://embed.nicovideo.jp/...">
+```
+
+はダメですが、
+
+```html id="m6rxfi"
+<video src="https://...">
+```
+
+による動画読み込みは任意ドメインから許可されています。
+
+そこで、
+
+```text id="qptmva"
+Cosense標準UserScript
+        ↓
+[https://www.nicovideo.jp/watch/sm9]
+を検出
+        ↓
+自分のサーバー
+https://example.com/nico/sm9.mp4
+        ↓
+<video controls src="...">
+```
+
+という構成にできます。
+
+サーバー側でニコニコの動画ストリームを取得し、ブラウザで再生可能なMP4/fMP4として中継します。
+
+```text id="pxqr99"
+             ┌─────────────────┐
+             │     Cosense     │
+             │                 │
+ニコニコURL →│   UserScript    │
+             │       ↓         │
+             │    <video>      │
+             └───────┬─────────┘
+                     │
+             media-src * なので通る
+                     │
+                     ▼
+             自分の動画Proxy
+                     │
+                     ▼
+              ニコニコ配信基盤
+```
+
+現在のニコニコは `delivery.domand.nicovideo.jp` から署名付きHLSを配信していることが確認できます。([github.com](https://github.com/yt-dlp/yt-dlp/issues/12376?utm_source=chatgpt.com)) したがって、サーバー側でストリームを解決してブラウザ向けにremuxすること自体は技術的に可能です。
+
+この方式にはかなり大きな利点があります。
+
+| 方法 | Mac | iPhone | iPad | 端末側追加ソフト |
+|---|---:|---:|---:|---|
+| Tampermonkey | ○ | ×/不安定 | ×/不安定 | 必要 |
+| Safari Web Extension | ○ | ○ | ○ | 必要 |
+| HelpfeelにCSP追加してもらう | ○ | ○ | ○ | 不要 |
+| `<video>` + 自前Proxy | ○ | ○ | ○ | 不要 |
+
+最後の方式なら、端末側には何もインストールしません。
+
+Cosenseのプロフィールに一度、
+
+```text id="ro9z9z"
+code:script.js
+```
+
+を書くだけです。Mac・iPhone・iPadで同じCosenseアカウントを使えば、同じUserScriptが実行されます。
+
+ただし欠点も明確です。
+
+```text id="3ry90z"
+公式iframe方式
+→ ニコニコ公式プレイヤー
+→ コメント等もそのまま利用可能
+
+video + Proxy方式
+→ 自作videoプレイヤー
+→ 動画視聴は可能
+→ ニコニコ公式UI・コメントは別途実装が必要
+→ 自分のサーバーが動画帯域を負担
+```
+
+なので、目的別にはこう考えます。
+
+> 「ニコニコ公式プレイヤーをCosense内にそのまま出したい」
+>
+> → HelpfeelにCSP対応してもらうのが最良。自力ならMac/iOS/iPadOS共通Safari Web Extension。
+
+> 「とにかくMac・iPhone・iPad全部でCosense内から動画を再生したい」
+>
+> → **Cosense標準UserScript + `<video>` + 自前の動画Proxy** が、端末依存をなくせる最も興味深い方法です。
+
+今回の要件なら、私は後者を一度PoCします。`media-src *` というCosense側の既存仕様を使うので、これまで苦しんでいた `frame-src` とService Worker問題を丸ごと避けられます。
+
+User:
+OK.ここからは別のAIに引き継ぐので今までの会話を一言一句漏らさずtxtファイルにして

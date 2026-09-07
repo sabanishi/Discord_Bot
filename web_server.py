@@ -5,6 +5,7 @@ from threading import Thread
 
 app = Flask('')
 BRIDGE_USER_SCRIPT = Path(__file__).parent / "tactical_challenge" / "request_bridge.user.js"
+NICONICO_USER_SCRIPT = Path(__file__).parent / "niconico.user.js"
 
 @app.route('/')
 def home():
@@ -19,6 +20,17 @@ def tactical_challenge_bridge_user_script():
         mimetype="application/javascript",
         as_attachment=False,
         download_name="tactical-challenge-bridge.user.js",
+    )
+
+
+@app.route('/userscripts/niconico.user.js')
+def niconico_user_script():
+    """ニコニコ動画のサムネイル取得UserScriptを配信する。"""
+    return send_file(
+        NICONICO_USER_SCRIPT,
+        mimetype="application/javascript",
+        as_attachment=False,
+        download_name="niconico.user.js",
     )
 
 def run():
