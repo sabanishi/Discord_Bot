@@ -87,6 +87,7 @@ class DiaryClient:
         return form
 
     async def create_page(self, title: str, lines: list[str]) -> str:
+        """日記ページを作成し、保存後のページURLを返す"""
         url = f"https://scrapbox.io/api/page-data/import/{self.encoded_project}.json"
         import_data = {"pages": [{"title": title, "lines": lines}]}
 
@@ -105,6 +106,7 @@ class DiaryClient:
         return self.page_url(title)
 
     async def fetch_page_lines(self, title: str) -> list[str]:
+        """指定した日記ページを取得し、本文行だけを返す"""
         encoded_title = quote(title, safe="")
         url = f"https://scrapbox.io/api/pages/{self.encoded_project}/{encoded_title}"
 

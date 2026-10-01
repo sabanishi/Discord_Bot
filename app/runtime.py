@@ -16,6 +16,7 @@ class RuntimeState:
     tasks_started: bool = False
 
     def validate_env(self) -> None:
+        """起動に必要な設定が揃っていることを確認する"""
         if not self.config.token:
             raise RuntimeError("環境変数 DISCORD_TOKEN が設定されていません")
         if not self.config.default_channel_id:
@@ -29,6 +30,7 @@ class RuntimeState:
 
 
 def initialize_runtime() -> RuntimeState:
+    """設定と外部サービスクライアントを構築し、検証済みの状態を返す"""
     config = load_config()
     state = RuntimeState(
         config=config,

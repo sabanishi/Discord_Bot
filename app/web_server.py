@@ -63,15 +63,18 @@ class WebServer:
         self._state = self.State()
 
     def run(self) -> None:
+        """Werkzeugのサーバーを現在のスレッドで開始し、停止されるまで待機する"""
         self._state.server = make_server("0.0.0.0", 8080, self.app)
         self._state.server.serve_forever()
 
     def start(self):
+        """サーバー処理をデーモンスレッドで開始する"""
         self._state.thread = Thread(target=self.run, daemon=True)
         self._state.thread.start()
         return self._state.thread
 
     def stop(self) -> None:
+        """実行中のサーバーとスレッドを停止し、状態を初期化する"""
         if self._state.server is not None:
             self._state.server.shutdown()
         if self._state.thread is not None:

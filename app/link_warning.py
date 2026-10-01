@@ -70,6 +70,7 @@ class ScrapboxLinkClient:
         }
 
     async def fetch_page_summaries(self) -> list[PageSummary]:
+        """Cosenseからページ一覧を取得し、被リンク数の確認対象へ変換する"""
         encoded_project = quote(self.project, safe="")
         url = f"https://scrapbox.io/api/pages/{encoded_project}"
         limit = 1000
@@ -113,6 +114,7 @@ class ScrapboxLinkClient:
         return pages
 
     async def fetch_excluded_titles(self, config_page_title: str) -> set[str]:
+        """除外設定ページを取得し、警告対象外のページタイトルを返す"""
         if not config_page_title:
             return set()
 

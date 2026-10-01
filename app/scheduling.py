@@ -33,6 +33,7 @@ async def run_interval_loop(
     on_error: Callable[[Exception], Awaitable[None]],
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
+    """終了条件を満たすまでジョブを実行し、失敗を通知してから待機する"""
     while not is_closed():
         try:
             await job()
@@ -51,6 +52,7 @@ async def run_daily_loop(
     on_error: Callable[[Exception], Awaitable[None]],
     sleep_until: Callable[[int, int], Awaitable[datetime]] = sleep_until_next_time,
 ) -> None:
+    """指定時刻まで待機して日次ジョブを実行し、終了まで繰り返す"""
     await wait_until_ready()
     while not is_closed():
         target = await sleep_until(hour, minute)

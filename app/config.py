@@ -71,6 +71,7 @@ def _parse_time(value: str, env_name: str) -> tuple[int, int]:
 
 
 def load_config(environ: Mapping[str, str] | None = None) -> AppConfig:
+    """環境変数を読み込み、アプリケーション設定へ変換する"""
     values = os.environ if environ is None else environ
     mention_id = values.get("MENTION_TARGET", "").strip()
     mention_target = f"<@{mention_id}>" if mention_id else ""
