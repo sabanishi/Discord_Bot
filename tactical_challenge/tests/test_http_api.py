@@ -2,15 +2,15 @@ import os
 import unittest
 from unittest.mock import patch
 
-from web_server import app
+from web_server import create_app
 from tactical_challenge import TargetPageResult
 from tactical_challenge.http_api import create_tactical_challenge_blueprint
 
 
+app = create_app(register_api=True)
+
+
 class TacticalChallengeHttpApiTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        app.register_blueprint(create_tactical_challenge_blueprint())
 
     def test_refactors_requested_page_and_returns_summary(self):
         with patch.dict(

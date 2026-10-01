@@ -10,10 +10,11 @@ class WebAppFactoryTests(unittest.TestCase):
         client = app.test_client()
 
         self.assertEqual(client.get("/").status_code, 200)
-        self.assertEqual(
-            client.get("/userscripts/niconico.user.js").status_code,
-            200,
-        )
+        response = client.get("/userscripts/niconico.user.js")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/javascript", response.content_type)
+        self.assertIn("Cosense Niconico Thumbnail Bridge", response.get_data(as_text=True))
+        response.close()
 
     def test_factory_registers_tactical_challenge_api(self):
         app = create_app()
