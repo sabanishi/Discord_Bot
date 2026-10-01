@@ -183,10 +183,17 @@ class TacticalChallengeCosenseClient:
         project: str,
         sid: str,
         timeout_seconds: int = 30,
+        session=None,
     ):
         self.project = project
         self.sid = self._normalize_sid(sid)
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+        self.session = session
+
+    def _session_context(self):
+        if self.session is not None:
+            return _ExistingSessionContext(self.session)
+        return aiohttp.ClientSession(timeout=self.timeout)
 
     async def fetch_target_page_titles(self) -> list[str]:
         """Cosenseのシーズン一覧ページから処理対象ページを取得する。"""
@@ -208,7 +215,7 @@ class TacticalChallengeCosenseClient:
             "Cookie": f"connect.sid={self.sid}",
         }
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        async with self._session_context() as session:
             async with session.get(url, headers=headers) as response:
                 response_text = await response.text()
                 if response.status == 404:
@@ -254,7 +261,7 @@ class TacticalChallengeCosenseClient:
             content_type="application/octet-stream",
         )
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        async with self._session_context() as session:
             async with session.post(url, headers=headers, data=form) as response:
                 response_text = await response.text()
                 if response.status < 200 or response.status >= 300:
@@ -296,7 +303,7 @@ class TacticalChallengeCosenseClient:
             content_type="application/octet-stream",
         )
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        async with self._session_context() as session:
             async with session.post(url, headers=headers, data=form) as response:
                 response_text = await response.text()
                 if response.status < 200 or response.status >= 300:
@@ -314,7 +321,7 @@ class TacticalChallengeCosenseClient:
             "Cookie": f"connect.sid={self.sid}",
         }
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        async with self._session_context() as session:
             async with session.get(url, headers=headers) as response:
                 response_text = await response.text()
                 if response.status < 200 or response.status >= 300:
@@ -340,3 +347,14 @@ class TacticalChallengeCosenseClient:
         if sid.startswith("connect.sid="):
             return sid.removeprefix("connect.sid=").strip()
         return sid
+
+
+class _ExistingSessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *args):
+        return None

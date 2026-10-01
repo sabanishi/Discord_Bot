@@ -1,5 +1,7 @@
 import os
 
+import aiohttp
+
 from .cosense_client import TacticalChallengeCosenseClient
 from .gyazo_client import GyazoClient
 from .target_page_service import refactor_target_pages
@@ -31,7 +33,7 @@ def format_tactical_challenge_error(error: object) -> str:
     )
 
 
-async def run_tactical_challenge_once():
+async def run_tactical_challenge_once(session=None):
     """戦術対抗戦の対象ページを1回リファクタする。"""
     project = os.getenv("COSENSE_PROJECT", "").strip()
     sid = os.getenv("COSENSE_SID", "").strip()
@@ -42,7 +44,15 @@ async def run_tactical_challenge_once():
             "GYAZO_ACCESS_TOKENが必要です"
         )
 
-    wiki = BlueArchiveWikiClient()
-    gyazo = GyazoClient(gyazo_token)
-    cosense = TacticalChallengeCosenseClient(project=project, sid=sid)
+    if session is None:
+        async with aiohttp.ClientSession() as owned_session:
+            return await _run_tactical_challenge_once(owned_session, project, sid, gyazo_token)
+    return await _run_tactical_challenge_once(session, project, sid, gyazo_token)
+
+
+async def _run_tactical_challenge_once(session, project, sid, gyazo_token):
+    client_kwargs = {"session": session}
+    wiki = BlueArchiveWikiClient(**client_kwargs)
+    gyazo = GyazoClient(gyazo_token, **client_kwargs)
+    cosense = TacticalChallengeCosenseClient(project=project, sid=sid, **client_kwargs)
     return await refactor_target_pages(wiki, gyazo, cosense)

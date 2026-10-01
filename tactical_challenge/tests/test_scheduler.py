@@ -60,9 +60,12 @@ class TacticalChallengeSchedulerTest(unittest.IsolatedAsyncioTestCase):
             result = await run_tactical_challenge_once()
 
         self.assertEqual(result, [])
-        wiki.assert_called_once_with()
-        gyazo.assert_called_once_with("token")
-        cosense.assert_called_once_with(project="project", sid="sid")
+        session = wiki.call_args.kwargs["session"]
+        self.assertIs(session, gyazo.call_args.kwargs["session"])
+        self.assertIs(session, cosense.call_args.kwargs["session"])
+        wiki.assert_called_once_with(session=session)
+        gyazo.assert_called_once_with("token", session=session)
+        cosense.assert_called_once_with(project="project", sid="sid", session=session)
         refactor.assert_awaited_once_with(
             wiki.return_value,
             gyazo.return_value,

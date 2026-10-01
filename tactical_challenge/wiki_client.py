@@ -14,16 +14,19 @@ CHARACTER_ICON_TABLE_URL = (
 
 
 class BlueArchiveWikiClient:
-    def __init__(self, timeout_seconds: int = 30):
+    def __init__(self, timeout_seconds: int = 30, session=None):
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         self.headers = {"User-Agent": "Discord_Bot/1.0 (character icon fetcher)"}
+        self.session = session
+
+    def _session_context(self):
+        return _ExistingSessionContext(self.session) if self.session else aiohttp.ClientSession(
+            timeout=self.timeout, headers=self.headers
+        )
 
     async def fetch_student_icons(self) -> list[StudentIcon]:
         """攻略Wikiから生徒の正式名称とアイコンURLの一覧を取得する。"""
-        async with aiohttp.ClientSession(
-            timeout=self.timeout,
-            headers=self.headers,
-        ) as session:
+        async with self._session_context() as session:
             async with session.get(CHARACTER_ICON_TABLE_URL) as response:
                 html = await response.text()
                 if response.status < 200 or response.status >= 300:
@@ -40,10 +43,7 @@ class BlueArchiveWikiClient:
         if parsed_url.scheme != "https" or parsed_url.hostname != "bluearchive.wikiru.jp":
             raise ValueError("攻略Wiki以外の画像URLは取得できません")
 
-        async with aiohttp.ClientSession(
-            timeout=self.timeout,
-            headers=self.headers,
-        ) as session:
+        async with self._session_context() as session:
             async with session.get(image_url) as response:
                 image = await response.read()
                 if response.status < 200 or response.status >= 300:
@@ -62,3 +62,14 @@ class BlueArchiveWikiClient:
                     raise RuntimeError("攻略Wikiが空の画像を返しました")
 
         return image
+
+
+class _ExistingSessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *args):
+        return None

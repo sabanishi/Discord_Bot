@@ -1,12 +1,11 @@
-import asyncio
-import json
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
-import aiohttp
 import discord
+from config import load_config
+from diary import DiaryClient, build_page_from_template, normalize_lines
+from notifications import DiscordNotifier
+from scheduling import run_daily_loop, run_interval_loop
 from web_server import register_tactical_challenge_api, start_web_server
 from link_warning import LinkWarningState, ScrapboxLinkClient
 from tactical_challenge.scheduler import (
@@ -16,95 +15,57 @@ from tactical_challenge.scheduler import (
 )
 
 client = discord.Client(intents=discord.Intents.default())
+notifier = DiscordNotifier(client)
 
 
-def build_mention_target() -> str:
-    user_id = os.getenv("MENTION_TARGET", "").strip()
-
-    if not user_id:
-        return ""
-
-    return f"<@{user_id}>"
-
-
-TOKEN = os.getenv("DISCORD_TOKEN")
-DEFAULT_CHANNEL_ID = int(os.getenv("DISCORD_DEFAULT_CHANNEL_ID"))
-ALERT_CHANNEL_ID = int(os.getenv("DISCORD_ALERT_CHANNEL_ID"))
-COSENSE_PROJECT = os.getenv("COSENSE_PROJECT")
-COSENSE_SID = os.getenv("COSENSE_SID")
-MENTION_TARGET = build_mention_target()
-
-JST = ZoneInfo("Asia/Tokyo")
+TOKEN = None
+DEFAULT_CHANNEL_ID = None
+ALERT_CHANNEL_ID = None
+COSENSE_PROJECT = None
+COSENSE_SID = None
+MENTION_TARGET = ""
 
 daily_task_started = False
 
 
-def parse_bool_env(env_name: str, default_value: str) -> bool:
-    value = os.getenv(env_name, default_value).strip().lower()
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    if value in {"0", "false", "no", "off"}:
-        return False
-    raise RuntimeError(f"環境変数 {env_name} は true または false で指定してください")
+CREATE_PAGE_HOUR = None
+CREATE_PAGE_MINUTE = None
+CHECK_PAGE_HOUR = None
+CHECK_PAGE_MINUTE = None
+LINK_WARNING_ENABLED = False
+LINK_WARNING_INTERVAL_MINUTES = None
+LINK_WARNING_CONFIG_PAGE = ""
+link_warning_state = None
+diary_client = None
 
 
-def parse_int_env(env_name: str, default_value: str, minimum: int = 0) -> int:
-    value = os.getenv(env_name, default_value).strip()
-    try:
-        parsed = int(value)
-    except ValueError as exc:
-        raise RuntimeError(f"環境変数 {env_name} は整数で指定してください") from exc
+def initialize_runtime() -> None:
+    """環境変数を読み込み、Bot起動に必要な実行時状態を初期化する。"""
+    global TOKEN, DEFAULT_CHANNEL_ID, ALERT_CHANNEL_ID
+    global COSENSE_PROJECT, COSENSE_SID, MENTION_TARGET
+    global CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE
+    global CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE
+    global LINK_WARNING_ENABLED, LINK_WARNING_INTERVAL_MINUTES
+    global LINK_WARNING_CONFIG_PAGE, link_warning_state, diary_client
 
-    if parsed < minimum:
-        raise RuntimeError(f"環境変数 {env_name} は {minimum} 以上で指定してください")
-    return parsed
+    config = load_config()
+    TOKEN = config.token
+    DEFAULT_CHANNEL_ID = config.default_channel_id
+    ALERT_CHANNEL_ID = config.alert_channel_id
+    COSENSE_PROJECT = config.cosense_project
+    COSENSE_SID = config.cosense_sid
+    MENTION_TARGET = config.mention_target
+    CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE = config.create_page_time
+    CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE = config.check_page_time
+    LINK_WARNING_ENABLED = config.link_warning_enabled
+    LINK_WARNING_INTERVAL_MINUTES = config.link_warning_interval_minutes
+    LINK_WARNING_CONFIG_PAGE = config.link_warning_config_page
 
-
-def parse_time_env(env_name: str, default_value: str) -> tuple[int, int]:
-    value = os.getenv(env_name, default_value)
-
-    try:
-        hour_text, minute_text = value.split(":")
-        hour = int(hour_text)
-        minute = int(minute_text)
-    except ValueError:
-        raise RuntimeError(f"環境変数 {env_name} は HH:MM 形式で指定してください\n現在の値: {value}")
-
-    if not 0 <= hour <= 23:
-        raise RuntimeError(f"環境変数 {env_name} の時が不正です。0〜23で指定してください\n現在の値: {value}")
-
-    if not 0 <= minute <= 59:
-        raise RuntimeError(f"環境変数 {env_name} の分が不正です。0〜59で指定してください\n現在の値: {value}")
-
-    return hour, minute
-
-
-CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE = parse_time_env("CREATE_PAGE_TIME", "7:00")
-CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE = parse_time_env("CHECK_PAGE_TIME", "21:15")
-
-LINK_WARNING_ENABLED = parse_bool_env("LINK_WARNING_ENABLED", "true")
-LINK_WARNING_INTERVAL_MINUTES = parse_int_env(
-    "LINK_WARNING_INTERVAL_MINUTES", "30", minimum=1
-)
-LINK_WARNING_THRESHOLD = parse_int_env("LINK_WARNING_THRESHOLD", "30", minimum=1)
-LINK_WARNING_RESOLVE_THRESHOLD = parse_int_env(
-    "LINK_WARNING_RESOLVE_THRESHOLD", "25", minimum=0
-)
-LINK_WARNING_CONFIG_PAGE = os.getenv("LINK_WARNING_CONFIG_PAGE", "").strip()
-
-if LINK_WARNING_RESOLVE_THRESHOLD >= LINK_WARNING_THRESHOLD:
-    adjusted_threshold = max(0, LINK_WARNING_THRESHOLD - 1)
-    print(
-        "LINK_WARNING_RESOLVE_THRESHOLD が LINK_WARNING_THRESHOLD 未満ではないため、"
-        f"{adjusted_threshold} に補正します",
-        flush=True,
+    link_warning_state = LinkWarningState(
+        warning_threshold=config.link_warning_threshold,
+        resolve_threshold=config.link_warning_resolve_threshold,
     )
-    LINK_WARNING_RESOLVE_THRESHOLD = adjusted_threshold
-
-link_warning_state = LinkWarningState(
-    warning_threshold=LINK_WARNING_THRESHOLD,
-    resolve_threshold=LINK_WARNING_RESOLVE_THRESHOLD,
-)
+    diary_client = DiaryClient(COSENSE_PROJECT, COSENSE_SID)
 
 
 def normalize_sid(sid: str) -> str:
@@ -137,53 +98,6 @@ def validate_env():
         raise RuntimeError("環境変数 COSENSE_SID が設定されていません")
 
 
-def build_page_from_template(target_date: datetime) -> tuple[str, list[str]]:
-    today = target_date.date()
-    yesterday = today - timedelta(days=1)
-    tomorrow = today + timedelta(days=1)
-
-    with open("template.txt", "r", encoding="utf-8") as f:
-        template = f.read()
-
-    text = (
-        template
-        .replace("${year}", today.strftime("%Y"))
-        .replace("${month}", today.strftime("%m"))
-        .replace("${today}", today.strftime("%Y-%m-%d"))
-        .replace("${yesterday}", yesterday.strftime("%Y-%m-%d"))
-        .replace("${tomorrow}", tomorrow.strftime("%Y-%m-%d"))
-    )
-
-    lines = text.splitlines()
-
-    if not lines or not lines[0].strip():
-        raise ValueError("template.txt の1行目にはページタイトルになる ${today} が必要です")
-
-    title = lines[0]
-    return title, lines
-
-
-def get_cosense_read_headers() -> dict[str, str]:
-    sid = normalize_sid(COSENSE_SID)
-
-    return {
-        "Accept": "application/json, text/plain, */*",
-        "Cookie": f"connect.sid={sid}",
-    }
-
-
-def get_cosense_import_headers() -> dict[str, str]:
-    sid = normalize_sid(COSENSE_SID)
-    encoded_project = get_encoded_project()
-
-    return {
-        "Accept": "application/json, text/plain, */*",
-        "Cookie": f"connect.sid={sid}",
-        "Origin": "https://scrapbox.io",
-        "Referer": f"https://scrapbox.io/{encoded_project}/settings/page-data",
-    }
-
-
 def get_page_url(title: str) -> str:
     encoded_project = get_encoded_project()
     encoded_title = quote(title, safe="")
@@ -191,130 +105,19 @@ def get_page_url(title: str) -> str:
     return f"https://scrapbox.io/{encoded_project}/{encoded_title}"
 
 
-async def safe_send(channel_id: int, message: str) -> bool:
-    channel = client.get_channel(channel_id)
-
-    if channel is None:
-        print(f"チャンネルが見つかりません:\n{channel_id}", flush=True)
-        return False
-
-    if len(message) > 1800:
-        message = f"{message[:1800]}\n...(長すぎるため省略しました)"
-
-    try:
-        await channel.send(message)
-        return True
-    except discord.HTTPException as e:
-        print(f"Discordへのメッセージ送信に失敗しました:\n{e}", flush=True)
-        return False
-    except Exception as e:
-        print(f"Discordへのメッセージ送信で予期しないエラーが発生しました:\n{e}", flush=True)
-        return False
-
-
-def build_import_form(import_data: dict) -> aiohttp.FormData:
-    form = aiohttp.FormData()
-
-    form.add_field(
-        "import-file",
-        json.dumps(import_data, ensure_ascii=False).encode("utf-8"),
-        filename="import.json",
-        content_type="application/octet-stream",
-    )
-
-    return form
-
-
-async def create_cosense_page(title: str, lines: list[str]) -> str:
-    validate_env()
-
-    encoded_project = get_encoded_project()
-    url = f"https://scrapbox.io/api/page-data/import/{encoded_project}.json"
-
-    import_data = {
-        "pages": [
-            {
-                "title": title,
-                "lines": lines,
-            }
-        ]
-    }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            url,
-            headers=get_cosense_import_headers(),
-            data=build_import_form(import_data),
-        ) as response:
-            response_text = await response.text()
-
-            if response.status < 200 or response.status >= 300:
-                raise RuntimeError(
-                    f"Scrapboxページ作成に失敗しました:\n"
-                    f"status={response.status}, body={response_text}"
-                )
-
-    return get_page_url(title)
-
-
-async def fetch_cosense_page_lines(title: str) -> list[str]:
-    validate_env()
-
-    encoded_project = get_encoded_project()
-    encoded_title = quote(title, safe="")
-    url = f"https://scrapbox.io/api/pages/{encoded_project}/{encoded_title}"
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=get_cosense_read_headers()) as response:
-            response_text = await response.text()
-
-            if response.status == 404:
-                raise RuntimeError(f"Scrapboxページが見つかりません:\n{title}")
-
-            if response.status < 200 or response.status >= 300:
-                raise RuntimeError(
-                    f"Scrapboxページ取得に失敗しました:\n"
-                    f"status={response.status}, body={response_text}"
-                )
-
-            data = json.loads(response_text)
-
-    if "lines" not in data:
-        raise RuntimeError(
-            f"Scrapboxページ取得結果が不正です:\n"
-            f"title:\n{title}\n"
-            f"response_text:\n{response_text}"
-        )
-
-    return [line.get("text", "") for line in data["lines"]]
-
-
 async def run_create_job(target: datetime):
     title, lines = build_page_from_template(target)
-    page_url = await create_cosense_page(title, lines)
+    page_url = await diary_client.create_page(title, lines)
 
-    await safe_send(
+    await notifier.send(
         DEFAULT_CHANNEL_ID,
         f"おはようございます。今日の日記ページはこちらです。\n{page_url}",
     )
 
 
-def normalize_lines(lines: list[str]) -> list[str]:
-    """
-    比較用に末尾の空行だけ無視する
-    途中の空行や本文の空白は変更として扱う
-    """
-    normalized = list(lines)
-
-    while normalized and normalized[-1] == "":
-        normalized.pop()
-
-    return normalized
-
-
 async def run_check_job(target: datetime):
     title, expected_lines = build_page_from_template(target)
-    actual_lines = await fetch_cosense_page_lines(title)
+    actual_lines = await diary_client.fetch_page_lines(title)
 
     expected = normalize_lines(expected_lines)
     actual = normalize_lines(actual_lines)
@@ -322,7 +125,7 @@ async def run_check_job(target: datetime):
     page_url = get_page_url(title)
 
     if actual == expected:
-        await safe_send(
+        await notifier.send(
             ALERT_CHANNEL_ID,
             f"{MENTION_TARGET}\n"
             f"もう、何やってたんですか！　まだ日記が更新されていませんよ！\n"
@@ -331,93 +134,74 @@ async def run_check_job(target: datetime):
         )
 
 
-async def sleep_until_next_time(hour: int, minute: int) -> datetime:
-    now = datetime.now(JST)
-
-    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-    if now >= target:
-        target += timedelta(days=1)
-
-    wait_seconds = (target - now).total_seconds()
-    await asyncio.sleep(wait_seconds)
-
-    return target
-
-
 async def create_page_loop():
-    await client.wait_until_ready()
+    async def job(target):
+        print(f"Scrapboxページを作成します: {target}", flush=True)
+        await run_create_job(target)
 
-    while not client.is_closed():
-        target = await sleep_until_next_time(
-            hour=CREATE_PAGE_HOUR,
-            minute=CREATE_PAGE_MINUTE,
+    async def on_error(error):
+        print(f"ページ作成処理でエラーが発生しました:\n{error}", flush=True)
+        await notifier.send(
+            ALERT_CHANNEL_ID,
+            f"{MENTION_TARGET}\nScrapboxページが作成できませんでしたよ。\n"
+            f"何かバグがあるんじゃないですか？:\n<エラーログ>\n{error}",
         )
 
-        try:
-            print(f"Scrapboxページを作成します: {target}", flush=True)
-            await run_create_job(target)
-        except Exception as e:
-            print(f"ページ作成処理でエラーが発生しました:\n{e}", flush=True)
-
-            await safe_send(
-                ALERT_CHANNEL_ID,
-                f"{MENTION_TARGET}\n"
-                f"Scrapboxページが作成できませんでしたよ。\n"
-                f"何かバグがあるんじゃないですか？:\n"
-                f"<エラーログ>\n"
-                f"{e}",
-            )
+    await run_daily_loop(
+        client=client,
+        hour=CREATE_PAGE_HOUR,
+        minute=CREATE_PAGE_MINUTE,
+        job=job,
+        on_error=on_error,
+    )
 
 
 async def check_page_loop():
-    await client.wait_until_ready()
+    async def job(target):
+        print(f"Scrapboxページの変更を確認します:\n{target}", flush=True)
+        await run_check_job(target)
 
-    while not client.is_closed():
-        target = await sleep_until_next_time(
-            hour=CHECK_PAGE_HOUR,
-            minute=CHECK_PAGE_MINUTE,
+    async def on_error(error):
+        print(f"ページ確認処理でエラーが発生しました:\n{error}", flush=True)
+        await notifier.send(
+            ALERT_CHANNEL_ID,
+            f"{MENTION_TARGET}\nああ、もう！日記がチェックできませんでしたよ！\n"
+            f"ちゃんとプログラム書いてください！:\n<エラーログ>\n{error}",
         )
 
-        try:
-            print(f"Scrapboxページの変更を確認します:\n{target}", flush=True)
-            await run_check_job(target)
-        except Exception as e:
-            print(f"ページ確認処理でエラーが発生しました:\n{e}", flush=True)
-
-            await safe_send(
-                ALERT_CHANNEL_ID,
-                f"{MENTION_TARGET}\n"
-                f"ああ、もう！日記がチェックできませんでしたよ！\n"
-                f"ちゃんとプログラム書いてください！:\n"
-                f"<エラーログ>\n"
-                f"{e}",
-            )
+    await run_daily_loop(
+        client=client,
+        hour=CHECK_PAGE_HOUR,
+        minute=CHECK_PAGE_MINUTE,
+        job=job,
+        on_error=on_error,
+    )
 
 
 async def tactical_challenge_loop():
     """毎日21:15に戦術対抗戦ページをリファクタする。"""
-    await client.wait_until_ready()
-
-    while not client.is_closed():
-        target = await sleep_until_next_time(
-            hour=CHECK_PAGE_HOUR,
-            minute=CHECK_PAGE_MINUTE,
+    async def job(target):
+        print(f"戦術対抗戦ページを更新します: {target}", flush=True)
+        results = await run_tactical_challenge_once()
+        await notifier.send(
+            DEFAULT_CHANNEL_ID,
+            format_tactical_challenge_completion(results),
         )
 
-        try:
-            print(f"戦術対抗戦ページを更新します: {target}", flush=True)
-            results = await run_tactical_challenge_once()
-            await safe_send(
-                DEFAULT_CHANNEL_ID,
-                format_tactical_challenge_completion(results),
-            )
-        except Exception as e:
-            print(f"戦術対抗戦ページ更新処理でエラーが発生しました:\n{e}", flush=True)
-            await safe_send(
-                ALERT_CHANNEL_ID,
-                f"{MENTION_TARGET}\n{format_tactical_challenge_error(e)}",
-            )
+    async def on_error(error):
+        print(f"戦術対抗戦ページ更新処理でエラーが発生しました:\n{error}", flush=True)
+        await notifier.send(
+            ALERT_CHANNEL_ID,
+            f"{MENTION_TARGET}\n{format_tactical_challenge_error(error)}",
+        )
+
+    await run_daily_loop(
+        client=client,
+        hour=CHECK_PAGE_HOUR,
+        minute=CHECK_PAGE_MINUTE,
+        job=job,
+        on_error=on_error,
+    )
 
 
 async def run_link_warning_check():
@@ -431,7 +215,7 @@ async def run_link_warning_check():
 
     for page in candidates:
         page_url = get_page_url(page.title)
-        sent = await safe_send(
+        sent = await notifier.send(
             ALERT_CHANNEL_ID,
             f"{MENTION_TARGET}\n"
             f"「{page.title}」が{page.linked_count}個のページから参照されているようですね。\n"
@@ -445,21 +229,26 @@ async def run_link_warning_check():
 async def link_warning_loop():
     await client.wait_until_ready()
 
-    while not client.is_closed():
-        try:
-            print("Scrapboxのリンク数を確認します", flush=True)
-            await run_link_warning_check()
-        except Exception as e:
-            print(f"リンク数確認処理でエラーが発生しました:\n{e}", flush=True)
-            await safe_send(
-                ALERT_CHANNEL_ID,
-                f"{MENTION_TARGET}\n"
-                f"ああ、もう！Scrapboxのリンク数を確認できませんでしたよ！\n"
-                f"私の処理は完璧だったはずなのに...仕方ありません。エラーログの確認が必要ですね。\n"
-                f"<エラーログ>\n{e}",
-            )
+    async def job():
+        print("Scrapboxのリンク数を確認します", flush=True)
+        await run_link_warning_check()
 
-        await asyncio.sleep(LINK_WARNING_INTERVAL_MINUTES * 60)
+    async def on_error(error):
+        print(f"リンク数確認処理でエラーが発生しました:\n{error}", flush=True)
+        await notifier.send(
+            ALERT_CHANNEL_ID,
+            f"{MENTION_TARGET}\n"
+            f"ああ、もう！Scrapboxのリンク数を確認できませんでしたよ！\n"
+            f"私の処理は完璧だったはずなのに...仕方ありません。エラーログの確認が必要ですね。\n"
+            f"<エラーログ>\n{error}",
+        )
+
+    await run_interval_loop(
+        is_closed=client.is_closed,
+        interval_seconds=LINK_WARNING_INTERVAL_MINUTES * 60,
+        job=job,
+        on_error=on_error,
+    )
 
 
 @client.event
@@ -476,7 +265,13 @@ async def on_ready():
         if LINK_WARNING_ENABLED:
             client.loop.create_task(link_warning_loop())
 
-validate_env()
-register_tactical_challenge_api()
-start_web_server()
-client.run(TOKEN)
+def main() -> None:
+    initialize_runtime()
+    validate_env()
+    register_tactical_challenge_api()
+    start_web_server()
+    client.run(TOKEN)
+
+
+if __name__ == "__main__":
+    main()

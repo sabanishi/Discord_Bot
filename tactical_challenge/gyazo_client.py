@@ -53,9 +53,10 @@ def parse_gyazo_upload_response(response: object) -> GyazoUpload:
 
 
 class GyazoClient:
-    def __init__(self, access_token: str, timeout_seconds: int = 30):
+    def __init__(self, access_token: str, timeout_seconds: int = 30, session=None):
         self.access_token = access_token.strip()
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+        self.session = session
 
     async def upload_image(self, image: bytes, filename: str) -> GyazoUpload:
         """画像を公開設定でGyazoへアップロードする。"""
@@ -76,7 +77,12 @@ class GyazoClient:
         form.add_field("access_policy", "anyone")
 
         headers = {"Authorization": f"Bearer {self.access_token}"}
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        session_context = (
+            _ExistingSessionContext(self.session)
+            if self.session is not None
+            else aiohttp.ClientSession(timeout=self.timeout)
+        )
+        async with session_context as session:
             async with session.post(
                 GYAZO_UPLOAD_URL,
                 headers=headers,
@@ -96,3 +102,14 @@ class GyazoClient:
                     ) from exc
 
         return parse_gyazo_upload_response(response_data)
+
+
+class _ExistingSessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *args):
+        return None

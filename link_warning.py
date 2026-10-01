@@ -53,10 +53,14 @@ class LinkWarningState:
 
 
 class ScrapboxLinkClient:
-    def __init__(self, project: str, sid: str, timeout_seconds: int = 30):
+    def __init__(self, project: str, sid: str, timeout_seconds: int = 30, session=None):
         self.project = project
         self.sid = sid
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+        self.session = session
+
+    def _session_context(self):
+        return _ExistingSessionContext(self.session) if self.session else aiohttp.ClientSession(timeout=self.timeout)
 
     @property
     def headers(self) -> dict[str, str]:
@@ -72,7 +76,7 @@ class ScrapboxLinkClient:
         skip = 0
         pages: list[PageSummary] = []
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        async with self._session_context() as session:
             while True:
                 data = await self._get_json(
                     session,
@@ -116,7 +120,7 @@ class ScrapboxLinkClient:
         encoded_title = quote(config_page_title, safe="")
         url = f"https://scrapbox.io/api/pages/{encoded_project}/{encoded_title}"
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        async with self._session_context() as session:
             data = await self._get_json(session, url)
 
         page_links = data.get("links")
@@ -183,3 +187,14 @@ def extract_setting_links(text: str) -> set[str]:
             links.add(content)
 
     return links
+
+
+class _ExistingSessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *args):
+        return None
