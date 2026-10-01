@@ -49,23 +49,31 @@ class MainJobTests(unittest.TestCase):
     def setUp(self):
         self.diary = FakeDiaryClient()
         self.notifier = FakeNotifier()
-        self.original_diary = main.diary_client
         self.original_notifier = main.notifier
-        self.original_default = main.DEFAULT_CHANNEL_ID
-        self.original_alert = main.ALERT_CHANNEL_ID
-        self.original_project = main.COSENSE_PROJECT
-        main.diary_client = self.diary
+        self.original_runtime = main.runtime
+        main.runtime = types.SimpleNamespace(
+            diary_client=self.diary,
+            link_warning_state=None,
+            config=types.SimpleNamespace(
+                default_channel_id=123,
+                alert_channel_id=456,
+                cosense_project="project",
+                cosense_sid="sid",
+                mention_target="",
+                create_page_time=(7, 0),
+                check_page_time=(21, 15),
+                link_warning_enabled=False,
+                link_warning_interval_minutes=30,
+            ),
+        )
         main.notifier = self.notifier
         main.DEFAULT_CHANNEL_ID = 123
         main.ALERT_CHANNEL_ID = 456
         main.COSENSE_PROJECT = "project"
 
     def tearDown(self):
-        main.diary_client = self.original_diary
         main.notifier = self.original_notifier
-        main.DEFAULT_CHANNEL_ID = self.original_default
-        main.ALERT_CHANNEL_ID = self.original_alert
-        main.COSENSE_PROJECT = self.original_project
+        main.runtime = self.original_runtime
 
     def test_create_job_notifies_created_page_url(self):
         asyncio.run(main.run_create_job(datetime(2026, 10, 1)))
@@ -92,14 +100,12 @@ class MainJobTests(unittest.TestCase):
 
     def test_main_calls_startup_steps_in_order_with_loaded_token(self):
         events = []
-        config = types.SimpleNamespace(token="token")
-
         with patch.object(main, "initialize_runtime", side_effect=lambda: events.append("initialize")), \
              patch.object(main, "validate_env", side_effect=lambda: events.append("validate")), \
              patch.object(main, "register_tactical_challenge_api", side_effect=lambda: events.append("api")), \
              patch.object(main, "start_web_server", side_effect=lambda: events.append("web")), \
              patch.object(main.client, "run", side_effect=lambda token: events.append(f"run:{token}")), \
-             patch.object(main, "TOKEN", "token"):
+             patch.object(main.runtime, "config", types.SimpleNamespace(token="token")):
             main.main()
 
         self.assertEqual(events, ["initialize", "validate", "api", "web", "run:token"])

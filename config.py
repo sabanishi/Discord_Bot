@@ -20,6 +20,21 @@ class AppConfig:
     link_warning_config_page: str
 
 
+def normalize_sid(sid: str) -> str:
+    sid = sid.strip()
+    if sid.startswith("connect.sid="):
+        return sid.removeprefix("connect.sid=").strip()
+    return sid
+
+
+def validate_link_warning_thresholds(warning_threshold: int, resolve_threshold: int) -> int:
+    if warning_threshold <= 0:
+        raise ValueError("warning_threshold must be greater than zero")
+    if not 0 <= resolve_threshold < warning_threshold:
+        raise ValueError("resolve_threshold must be between zero and warning_threshold")
+    return resolve_threshold
+
+
 def _parse_bool(value: str, env_name: str) -> bool:
     normalized = value.strip().lower()
     if normalized in {"1", "true", "yes", "on"}:

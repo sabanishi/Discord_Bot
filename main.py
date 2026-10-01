@@ -1,12 +1,14 @@
 from datetime import datetime
+from dataclasses import dataclass
 from urllib.parse import quote
 
+import aiohttp
 import discord
-from config import load_config
+from config import AppConfig, load_config, normalize_sid
 from diary import DiaryClient, build_page_from_template, normalize_lines
 from notifications import DiscordNotifier
 from scheduling import run_daily_loop, run_interval_loop
-from web_server import register_tactical_challenge_api, start_web_server
+from web_server import register_tactical_challenge_api, start_web_server, stop_web_server
 from link_warning import LinkWarningState, ScrapboxLinkClient
 from tactical_challenge.scheduler import (
     format_tactical_challenge_completion,
@@ -18,83 +20,47 @@ client = discord.Client(intents=discord.Intents.default())
 notifier = DiscordNotifier(client)
 
 
-TOKEN = None
-DEFAULT_CHANNEL_ID = None
-ALERT_CHANNEL_ID = None
-COSENSE_PROJECT = None
-COSENSE_SID = None
-MENTION_TARGET = ""
+@dataclass
+class RuntimeState:
+    config: AppConfig | None = None
+    link_warning_state: LinkWarningState | None = None
+    diary_client: DiaryClient | None = None
+    http_session: aiohttp.ClientSession | None = None
 
+
+runtime = RuntimeState()
 daily_task_started = False
 
 
-CREATE_PAGE_HOUR = None
-CREATE_PAGE_MINUTE = None
-CHECK_PAGE_HOUR = None
-CHECK_PAGE_MINUTE = None
-LINK_WARNING_ENABLED = False
-LINK_WARNING_INTERVAL_MINUTES = None
-LINK_WARNING_CONFIG_PAGE = ""
-link_warning_state = None
-diary_client = None
-
-
 def initialize_runtime() -> None:
-    """環境変数を読み込み、Bot起動に必要な実行時状態を初期化する。"""
-    global TOKEN, DEFAULT_CHANNEL_ID, ALERT_CHANNEL_ID
-    global COSENSE_PROJECT, COSENSE_SID, MENTION_TARGET
-    global CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE
-    global CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE
-    global LINK_WARNING_ENABLED, LINK_WARNING_INTERVAL_MINUTES
-    global LINK_WARNING_CONFIG_PAGE, link_warning_state, diary_client
-
     config = load_config()
-    TOKEN = config.token
-    DEFAULT_CHANNEL_ID = config.default_channel_id
-    ALERT_CHANNEL_ID = config.alert_channel_id
-    COSENSE_PROJECT = config.cosense_project
-    COSENSE_SID = config.cosense_sid
-    MENTION_TARGET = config.mention_target
-    CREATE_PAGE_HOUR, CREATE_PAGE_MINUTE = config.create_page_time
-    CHECK_PAGE_HOUR, CHECK_PAGE_MINUTE = config.check_page_time
-    LINK_WARNING_ENABLED = config.link_warning_enabled
-    LINK_WARNING_INTERVAL_MINUTES = config.link_warning_interval_minutes
-    LINK_WARNING_CONFIG_PAGE = config.link_warning_config_page
-
-    link_warning_state = LinkWarningState(
+    runtime.config = config
+    runtime.link_warning_state = LinkWarningState(
         warning_threshold=config.link_warning_threshold,
         resolve_threshold=config.link_warning_resolve_threshold,
     )
-    diary_client = DiaryClient(COSENSE_PROJECT, COSENSE_SID)
-
-
-def normalize_sid(sid: str) -> str:
-    sid = sid.strip()
-
-    if sid.startswith("connect.sid="):
-        return sid.removeprefix("connect.sid=").strip()
-
-    return sid
+    runtime.diary_client = DiaryClient(config.cosense_project, config.cosense_sid)
 
 
 def get_encoded_project() -> str:
-    return quote(COSENSE_PROJECT, safe="")
+    return quote(runtime.config.cosense_project, safe="")
 
 
-def validate_env():
-    if not TOKEN:
+def validate_env() -> None:
+    config = runtime.config
+    if not config.token:
         raise RuntimeError("環境変数 DISCORD_TOKEN が設定されていません")
 
-    if not DEFAULT_CHANNEL_ID:
+    if not config.default_channel_id:
         raise RuntimeError("環境変数 DISCORD_DEFAULT_CHANNEL_ID が設定されていません")
 
-    if not ALERT_CHANNEL_ID:
+    if not config.alert_channel_id:
         raise RuntimeError("環境変数 DISCORD_ALERT_CHANNEL_ID が設定されていません")
 
-    if not COSENSE_PROJECT:
+    if not config.cosense_project:
         raise RuntimeError("環境変数 COSENSE_PROJECT が設定されていません")
 
-    if not COSENSE_SID:
+    if not config.cosense_sid:
         raise RuntimeError("環境変数 COSENSE_SID が設定されていません")
 
 
@@ -105,19 +71,19 @@ def get_page_url(title: str) -> str:
     return f"https://scrapbox.io/{encoded_project}/{encoded_title}"
 
 
-async def run_create_job(target: datetime):
+async def run_create_job(target: datetime) -> None:
     title, lines = build_page_from_template(target)
-    page_url = await diary_client.create_page(title, lines)
+    page_url = await runtime.diary_client.create_page(title, lines)
 
     await notifier.send(
-        DEFAULT_CHANNEL_ID,
+        runtime.config.default_channel_id,
         f"おはようございます。今日の日記ページはこちらです。\n{page_url}",
     )
 
 
-async def run_check_job(target: datetime):
+async def run_check_job(target: datetime) -> None:
     title, expected_lines = build_page_from_template(target)
-    actual_lines = await diary_client.fetch_page_lines(title)
+    actual_lines = await runtime.diary_client.fetch_page_lines(title)
 
     expected = normalize_lines(expected_lines)
     actual = normalize_lines(actual_lines)
@@ -126,15 +92,15 @@ async def run_check_job(target: datetime):
 
     if actual == expected:
         await notifier.send(
-            ALERT_CHANNEL_ID,
-            f"{MENTION_TARGET}\n"
+            runtime.config.alert_channel_id,
+            f"{runtime.config.mention_target}\n"
             f"もう、何やってたんですか！　まだ日記が更新されていませんよ！\n"
             f"早く済ませてください。\n"
             f"{page_url}",
         )
 
 
-async def create_page_loop():
+async def create_page_loop() -> None:
     async def job(target):
         print(f"Scrapboxページを作成します: {target}", flush=True)
         await run_create_job(target)
@@ -142,21 +108,21 @@ async def create_page_loop():
     async def on_error(error):
         print(f"ページ作成処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
-            ALERT_CHANNEL_ID,
-            f"{MENTION_TARGET}\nScrapboxページが作成できませんでしたよ。\n"
+            runtime.config.alert_channel_id,
+            f"{runtime.config.mention_target}\nScrapboxページが作成できませんでしたよ。\n"
             f"何かバグがあるんじゃないですか？:\n<エラーログ>\n{error}",
         )
 
     await run_daily_loop(
         client=client,
-        hour=CREATE_PAGE_HOUR,
-        minute=CREATE_PAGE_MINUTE,
+        hour=runtime.config.create_page_time[0],
+        minute=runtime.config.create_page_time[1],
         job=job,
         on_error=on_error,
     )
 
 
-async def check_page_loop():
+async def check_page_loop() -> None:
     async def job(target):
         print(f"Scrapboxページの変更を確認します:\n{target}", flush=True)
         await run_check_job(target)
@@ -164,69 +130,70 @@ async def check_page_loop():
     async def on_error(error):
         print(f"ページ確認処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
-            ALERT_CHANNEL_ID,
-            f"{MENTION_TARGET}\nああ、もう！日記がチェックできませんでしたよ！\n"
+            runtime.config.alert_channel_id,
+            f"{runtime.config.mention_target}\nああ、もう！日記がチェックできませんでしたよ！\n"
             f"ちゃんとプログラム書いてください！:\n<エラーログ>\n{error}",
         )
 
     await run_daily_loop(
         client=client,
-        hour=CHECK_PAGE_HOUR,
-        minute=CHECK_PAGE_MINUTE,
+        hour=runtime.config.check_page_time[0],
+        minute=runtime.config.check_page_time[1],
         job=job,
         on_error=on_error,
     )
 
 
-async def tactical_challenge_loop():
+async def tactical_challenge_loop() -> None:
     """毎日21:15に戦術対抗戦ページをリファクタする。"""
     async def job(target):
         print(f"戦術対抗戦ページを更新します: {target}", flush=True)
         results = await run_tactical_challenge_once()
         await notifier.send(
-            DEFAULT_CHANNEL_ID,
+            runtime.config.default_channel_id,
             format_tactical_challenge_completion(results),
         )
 
     async def on_error(error):
         print(f"戦術対抗戦ページ更新処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
-            ALERT_CHANNEL_ID,
-            f"{MENTION_TARGET}\n{format_tactical_challenge_error(error)}",
+            runtime.config.alert_channel_id,
+            f"{runtime.config.mention_target}\n{format_tactical_challenge_error(error)}",
         )
 
     await run_daily_loop(
         client=client,
-        hour=CHECK_PAGE_HOUR,
-        minute=CHECK_PAGE_MINUTE,
+        hour=runtime.config.check_page_time[0],
+        minute=runtime.config.check_page_time[1],
         job=job,
         on_error=on_error,
     )
 
 
-async def run_link_warning_check():
+async def run_link_warning_check() -> None:
     cosense = ScrapboxLinkClient(
-        project=COSENSE_PROJECT,
-        sid=normalize_sid(COSENSE_SID),
+        project=runtime.config.cosense_project,
+        sid=normalize_sid(runtime.config.cosense_sid),
+        session=runtime.http_session,
     )
     pages = await cosense.fetch_page_summaries()
-    excluded_titles = await cosense.fetch_excluded_titles(LINK_WARNING_CONFIG_PAGE)
-    candidates = link_warning_state.find_new_warnings(pages, excluded_titles)
+    excluded_titles = await cosense.fetch_excluded_titles(runtime.config.link_warning_config_page)
+    candidates = runtime.link_warning_state.find_new_warnings(pages, excluded_titles)
 
     for page in candidates:
         page_url = get_page_url(page.title)
         sent = await notifier.send(
-            ALERT_CHANNEL_ID,
-            f"{MENTION_TARGET}\n"
+            runtime.config.alert_channel_id,
+            f"{runtime.config.mention_target}\n"
             f"「{page.title}」が{page.linked_count}個のページから参照されているようですね。\n"
             f"そろそろ整理や分割を考えた方が良いんじゃないですか？\n"
             f"{page_url}",
         )
         if sent:
-            link_warning_state.mark_warned(page.page_id)
+            runtime.link_warning_state.mark_warned(page.page_id)
 
 
-async def link_warning_loop():
+async def link_warning_loop() -> None:
     await client.wait_until_ready()
 
     async def job():
@@ -236,8 +203,8 @@ async def link_warning_loop():
     async def on_error(error):
         print(f"リンク数確認処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
-            ALERT_CHANNEL_ID,
-            f"{MENTION_TARGET}\n"
+            runtime.config.alert_channel_id,
+            f"{runtime.config.mention_target}\n"
             f"ああ、もう！Scrapboxのリンク数を確認できませんでしたよ！\n"
             f"私の処理は完璧だったはずなのに...仕方ありません。エラーログの確認が必要ですね。\n"
             f"<エラーログ>\n{error}",
@@ -245,32 +212,43 @@ async def link_warning_loop():
 
     await run_interval_loop(
         is_closed=client.is_closed,
-        interval_seconds=LINK_WARNING_INTERVAL_MINUTES * 60,
+        interval_seconds=runtime.config.link_warning_interval_minutes * 60,
         job=job,
         on_error=on_error,
     )
 
 
 @client.event
-async def on_ready():
+async def on_ready() -> None:
     global daily_task_started
 
     print("ログインしました", flush=True)
+
+    if runtime.http_session is None or runtime.http_session.closed:
+        runtime.http_session = aiohttp.ClientSession()
+        runtime.diary_client.session = runtime.http_session
 
     if not daily_task_started:
         daily_task_started = True
         client.loop.create_task(create_page_loop())
         client.loop.create_task(check_page_loop())
         client.loop.create_task(tactical_challenge_loop())
-        if LINK_WARNING_ENABLED:
+        if runtime.config.link_warning_enabled:
             client.loop.create_task(link_warning_loop())
+
+
+@client.event
+async def on_disconnect() -> None:
+    if runtime.http_session is not None and not runtime.http_session.closed:
+        await runtime.http_session.close()
+    stop_web_server()
 
 def main() -> None:
     initialize_runtime()
     validate_env()
     register_tactical_challenge_api()
     start_web_server()
-    client.run(TOKEN)
+    client.run(runtime.config.token)
 
 
 if __name__ == "__main__":

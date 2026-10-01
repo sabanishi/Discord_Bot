@@ -3,6 +3,7 @@ import asyncio
 import os
 
 from link_warning import LinkWarningState, ScrapboxLinkClient
+from config import normalize_sid, validate_link_warning_thresholds
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,19 +65,12 @@ def parse_args() -> argparse.Namespace:
             except ValueError:
                 parser.error("LINK_WARNING_RESOLVE_THRESHOLD は整数で指定してください")
 
-    if args.threshold <= 0:
-        parser.error("--threshold は1以上で指定してください")
-    if not 0 <= args.resolve_threshold < args.threshold:
+    try:
+        validate_link_warning_thresholds(args.threshold, args.resolve_threshold)
+    except ValueError:
         parser.error("解除閾値は0以上かつ警告閾値未満にしてください")
 
     return args
-
-
-def normalize_sid(sid: str) -> str:
-    sid = sid.strip()
-    if sid.startswith("connect.sid="):
-        return sid.removeprefix("connect.sid=").strip()
-    return sid
 
 
 async def run(args: argparse.Namespace) -> None:

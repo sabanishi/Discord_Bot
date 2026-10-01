@@ -1,9 +1,18 @@
 import unittest
 
-from config import AppConfig, load_config
+from config import AppConfig, load_config, normalize_sid, validate_link_warning_thresholds
 
 
 class ConfigTests(unittest.TestCase):
+    def test_normalize_sid_accepts_cookie_prefix_and_whitespace(self):
+        self.assertEqual(normalize_sid("  connect.sid= session  "), "session")
+        self.assertEqual(normalize_sid(" session "), "session")
+
+    def test_validate_link_warning_thresholds_rejects_invalid_order(self):
+        self.assertEqual(validate_link_warning_thresholds(30, 25), 25)
+        with self.assertRaises(ValueError):
+            validate_link_warning_thresholds(30, 30)
+
     def test_load_config_reads_values_and_defaults(self):
         config = load_config(
             {
