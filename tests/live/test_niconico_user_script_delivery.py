@@ -4,7 +4,7 @@ import unittest
 from app.web_server import app
 
 
-NICONICO_SCRIPT = Path(__file__).parents[1] / "niconico.user.js"
+NICONICO_SCRIPT = Path(__file__).parents[2] / "resources" / "userscripts" / "niconico.user.js"
 
 
 class NiconicoUserScriptDeliveryTest(unittest.TestCase):

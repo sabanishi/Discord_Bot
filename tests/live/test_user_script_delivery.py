@@ -4,7 +4,7 @@ import unittest
 from app.web_server import app
 
 
-BRIDGE_SCRIPT = Path(__file__).parents[2] / "app" / "tactical_challenge" / "request_bridge.user.js"
+BRIDGE_SCRIPT = Path(__file__).parents[2] / "resources" / "userscripts" / "tactical_challenge-bridge.user.js"
 
 
 class UserScriptDeliveryTest(unittest.TestCase):

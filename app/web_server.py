@@ -5,8 +5,9 @@ from threading import Thread
 from werkzeug.serving import make_server
 
 PROJECT_ROOT = Path(__file__).parent.parent
-BRIDGE_USER_SCRIPT = Path(__file__).parent / "tactical_challenge" / "request_bridge.user.js"
-NICONICO_USER_SCRIPT = PROJECT_ROOT / "niconico.user.js"
+USER_SCRIPTS_DIR = PROJECT_ROOT / "resources" / "userscripts"
+BRIDGE_USER_SCRIPT = USER_SCRIPTS_DIR / "tactical_challenge-bridge.user.js"
+NICONICO_USER_SCRIPT = USER_SCRIPTS_DIR / "niconico.user.js"
 
 def _register_static_routes(app: Flask) -> None:
     @app.route('/')

@@ -3,9 +3,9 @@ import subprocess
 import unittest
 
 
-TACTICAL_CHALLENGE_DIR = Path(__file__).resolve().parents[3] / "app" / "tactical_challenge"
-NATIVE_SCRIPT = TACTICAL_CHALLENGE_DIR / "user_script.js"
-BRIDGE_SCRIPT = TACTICAL_CHALLENGE_DIR / "request_bridge.user.js"
+USER_SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "resources" / "userscripts"
+NATIVE_SCRIPT = USER_SCRIPTS_DIR / "tactical_challenge.user.js"
+BRIDGE_SCRIPT = USER_SCRIPTS_DIR / "tactical_challenge-bridge.user.js"
 
 
 class UserScriptBridgeTest(unittest.TestCase):
