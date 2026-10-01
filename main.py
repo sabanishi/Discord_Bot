@@ -1,9 +1,9 @@
 import aiohttp
 import discord
-from notifications import DiscordNotifier
-from client_tasks import register_scheduled_tasks
-from web_server import register_tactical_challenge_api, start_web_server, stop_web_server
-from runtime import RuntimeState, initialize_runtime as build_runtime, validate_env as validate_runtime_env
+from app.notifications import DiscordNotifier
+from app.client_tasks import register_scheduled_tasks
+from app.web_server import register_tactical_challenge_api, start_web_server, stop_web_server
+from app.runtime import RuntimeState, initialize_runtime as build_runtime, validate_env as validate_runtime_env
 
 client = discord.Client(intents=discord.Intents.default())
 notifier = DiscordNotifier(client)

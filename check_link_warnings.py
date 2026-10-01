@@ -2,8 +2,8 @@ import argparse
 import asyncio
 import os
 
-from link_warning import LinkWarningState, ScrapboxLinkClient
-from config import normalize_sid, validate_link_warning_thresholds
+from app.link_warning import LinkWarningState, ScrapboxLinkClient
+from app.config import normalize_sid, validate_link_warning_thresholds
 
 
 def parse_args() -> argparse.Namespace:
