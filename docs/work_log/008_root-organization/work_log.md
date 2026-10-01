@@ -33,8 +33,10 @@
 
 #### 判断・注意事項
 
-- 既存の起動入口を維持するため、`main.py`と`check_link_warnings.py`はルートに残す。
+- `main.py`はルートに残し、補助的な実行入口は`tools/`へ配置する。
 - 外部ライブテストは従来どおりDNS環境に依存するため、今回も実行対象外とした。
+- `check_link_warnings.py`を`tools/check_link_warnings.py`へ移動した。
+- 移動後もCLI引数テストが成功することを確認した。
 
 ## 未完了事項
 

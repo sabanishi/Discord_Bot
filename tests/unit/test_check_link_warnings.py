@@ -3,7 +3,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from check_link_warnings import parse_args
+from tools.check_link_warnings import parse_args
 
 
 class CheckLinkWarningsTests(unittest.TestCase):
