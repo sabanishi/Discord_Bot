@@ -183,7 +183,7 @@ class TacticalChallengeCosenseClient:
         project: str,
         sid: str,
         timeout_seconds: int = 30,
-        session=None,
+        session: aiohttp.ClientSession | None = None,
     ):
         self.project = project
         self.sid = self._normalize_sid(sid)
@@ -350,11 +350,11 @@ class TacticalChallengeCosenseClient:
 
 
 class _ExistingSessionContext:
-    def __init__(self, session):
+    def __init__(self, session: aiohttp.ClientSession):
         self.session = session
 
     async def __aenter__(self):
         return self.session
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args: object):
         return None

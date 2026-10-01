@@ -1,12 +1,13 @@
 import aiohttp
 import discord
-
 from app.bot_jobs import register_scheduled_tasks
 from app.notifications import DiscordNotifier
+from app.runtime import RuntimeState
+from app.web_server import WebServer
 
 
 class DiscordBot:
-    def __init__(self, state, web_server):
+    def __init__(self, state: RuntimeState, web_server: WebServer):
         self.state = state
         self.web_server = web_server
         self.client = discord.Client(intents=discord.Intents.default())

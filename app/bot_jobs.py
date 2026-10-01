@@ -1,3 +1,7 @@
+from datetime import datetime
+
+import discord
+
 from app.jobs import get_page_url, run_check_job, run_create_job
 from app.config import normalize_sid
 from app.link_warning import ScrapboxLinkClient
@@ -7,9 +11,11 @@ from app.tactical_challenge.scheduler import (
     format_tactical_challenge_error,
     run_tactical_challenge_once,
 )
+from app.notifications import DiscordNotifier
+from app.runtime import RuntimeState
 
 
-def register_scheduled_tasks(client, state, notifier) -> bool:
+def register_scheduled_tasks(client: discord.Client, state: RuntimeState, notifier: DiscordNotifier) -> bool:
     if getattr(state, "tasks_started", False):
         return False
 
@@ -22,12 +28,12 @@ def register_scheduled_tasks(client, state, notifier) -> bool:
     return True
 
 
-async def create_page_loop(client, state, notifier) -> None:
-    async def job(target):
+async def create_page_loop(client: discord.Client, state: RuntimeState, notifier: DiscordNotifier) -> None:
+    async def job(target: datetime) -> None:
         print(f"Scrapboxページを作成します: {target}", flush=True)
         await run_create_job(state, notifier, target)
 
-    async def on_error(error):
+    async def on_error(error: Exception):
         print(f"ページ作成処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
             state.config.alert_channel_id,
@@ -45,12 +51,12 @@ async def create_page_loop(client, state, notifier) -> None:
     )
 
 
-async def check_page_loop(client, state, notifier) -> None:
-    async def job(target):
+async def check_page_loop(client: discord.Client, state: RuntimeState, notifier: DiscordNotifier) -> None:
+    async def job(target: datetime) -> None:
         print(f"Scrapboxページの変更を確認します:\n{target}", flush=True)
         await run_check_job(state, notifier, target)
 
-    async def on_error(error):
+    async def on_error(error: Exception):
         print(f"ページ確認処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
             state.config.alert_channel_id,
@@ -68,8 +74,8 @@ async def check_page_loop(client, state, notifier) -> None:
     )
 
 
-async def tactical_challenge_loop(client, state, notifier) -> None:
-    async def job(target):
+async def tactical_challenge_loop(client: discord.Client, state: RuntimeState, notifier: DiscordNotifier) -> None:
+    async def job(target: datetime) -> None:
         print(f"戦術対抗戦ページを更新します: {target}", flush=True)
         results = await run_tactical_challenge_once()
         await notifier.send(
@@ -77,7 +83,7 @@ async def tactical_challenge_loop(client, state, notifier) -> None:
             format_tactical_challenge_completion(results),
         )
 
-    async def on_error(error):
+    async def on_error(error: Exception):
         print(f"戦術対抗戦ページ更新処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
             state.config.alert_channel_id,
@@ -94,14 +100,14 @@ async def tactical_challenge_loop(client, state, notifier) -> None:
     )
 
 
-async def link_warning_loop(client, state, notifier) -> None:
+async def link_warning_loop(client: discord.Client, state: RuntimeState, notifier: DiscordNotifier) -> None:
     await client.wait_until_ready()
 
-    async def job():
+    async def job() -> None:
         print("Scrapboxのリンク数を確認します", flush=True)
         await run_link_warning_check(state, notifier)
 
-    async def on_error(error):
+    async def on_error(error: Exception):
         print(f"リンク数確認処理でエラーが発生しました:\n{error}", flush=True)
         await notifier.send(
             state.config.alert_channel_id,
@@ -119,7 +125,7 @@ async def link_warning_loop(client, state, notifier) -> None:
     )
 
 
-async def run_link_warning_check(state, notifier) -> None:
+async def run_link_warning_check(state: RuntimeState, notifier: DiscordNotifier) -> None:
         cosense = ScrapboxLinkClient(
             project=state.config.cosense_project,
             sid=normalize_sid(state.config.cosense_sid),

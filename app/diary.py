@@ -136,11 +136,11 @@ class DiaryClient:
 
 
 class _ExistingSessionContext:
-    def __init__(self, session):
+    def __init__(self, session: aiohttp.ClientSession):
         self.session = session
 
     async def __aenter__(self):
         return self.session
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args: object):
         return None

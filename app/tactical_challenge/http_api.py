@@ -1,7 +1,6 @@
 import asyncio
 import os
-
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 from .cosense_client import TacticalChallengeCosenseClient
 from .gyazo_client import GyazoClient
@@ -59,7 +58,7 @@ def create_tactical_challenge_blueprint() -> Blueprint:
     return blueprint
 
 
-def _cors(response, status: int | None = None):
+def _cors(response: Response, status: int | None = None) -> Response:
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"

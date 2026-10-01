@@ -14,7 +14,7 @@ CHARACTER_ICON_TABLE_URL = (
 
 
 class BlueArchiveWikiClient:
-    def __init__(self, timeout_seconds: int = 30, session=None):
+    def __init__(self, timeout_seconds: int = 30, session: aiohttp.ClientSession | None = None):
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         self.headers = {"User-Agent": "Discord_Bot/1.0 (character icon fetcher)"}
         self.session = session
@@ -65,11 +65,11 @@ class BlueArchiveWikiClient:
 
 
 class _ExistingSessionContext:
-    def __init__(self, session):
+    def __init__(self, session: aiohttp.ClientSession):
         self.session = session
 
     async def __aenter__(self):
         return self.session
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args: object):
         return None

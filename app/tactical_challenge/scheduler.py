@@ -1,4 +1,5 @@
 import os
+from typing import Sequence
 
 import aiohttp
 
@@ -6,9 +7,10 @@ from .cosense_client import TacticalChallengeCosenseClient
 from .gyazo_client import GyazoClient
 from .target_page_service import refactor_target_pages
 from .wiki_client import BlueArchiveWikiClient
+from .target_page_service import TargetPageResult
 
 
-def format_tactical_challenge_completion(results) -> str:
+def format_tactical_challenge_completion(results: Sequence[TargetPageResult]) -> str:
     """戦術対抗戦の処理結果をDiscord通知文へ整形する。"""
     updated_pages = sum(result.changed_lines > 0 for result in results)
     changed_lines = sum(result.changed_lines for result in results)
@@ -33,7 +35,7 @@ def format_tactical_challenge_error(error: object) -> str:
     )
 
 
-async def run_tactical_challenge_once(session=None):
+async def run_tactical_challenge_once(session: aiohttp.ClientSession | None = None) -> list[TargetPageResult]:
     """戦術対抗戦の対象ページを1回リファクタする。"""
     project = os.getenv("COSENSE_PROJECT", "").strip()
     sid = os.getenv("COSENSE_SID", "").strip()
@@ -50,7 +52,12 @@ async def run_tactical_challenge_once(session=None):
     return await _run_tactical_challenge_once(session, project, sid, gyazo_token)
 
 
-async def _run_tactical_challenge_once(session, project, sid, gyazo_token):
+async def _run_tactical_challenge_once(
+    session: aiohttp.ClientSession,
+    project: str,
+    sid: str,
+    gyazo_token: str,
+):
     client_kwargs = {"session": session}
     wiki = BlueArchiveWikiClient(**client_kwargs)
     gyazo = GyazoClient(gyazo_token, **client_kwargs)

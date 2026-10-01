@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 try:
     import discord
 except ModuleNotFoundError:  # 単体テストで通知クライアントだけを検証する場合に許容する
@@ -5,7 +7,7 @@ except ModuleNotFoundError:  # 単体テストで通知クライアントだけ�
 
 
 class DiscordNotifier:
-    def __init__(self, client):
+    def __init__(self, client: discord.Client):
         self.client = client
 
     async def send(self, channel_id: int, message: str) -> bool:

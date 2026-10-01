@@ -1,15 +1,17 @@
 from urllib.parse import quote
-
+from datetime import datetime
 from app.diary import build_page_from_template, normalize_lines
+from app.notifications import DiscordNotifier
+from app.runtime import RuntimeState
 
 
-def get_page_url(state, title: str) -> str:
+def get_page_url(state: RuntimeState, title: str) -> str:
     project = quote(state.config.cosense_project, safe="")
     encoded_title = quote(title, safe="")
     return f"https://scrapbox.io/{project}/{encoded_title}"
 
 
-async def run_create_job(state, notifier, target) -> None:
+async def run_create_job(state: RuntimeState, notifier: DiscordNotifier, target: datetime) -> None:
     title, lines = build_page_from_template(target)
     page_url = await state.diary_client.create_page(title, lines)
     await notifier.send(
@@ -18,7 +20,7 @@ async def run_create_job(state, notifier, target) -> None:
     )
 
 
-async def run_check_job(state, notifier, target) -> None:
+async def run_check_job(state: RuntimeState, notifier: DiscordNotifier, target: datetime) -> None:
     title, expected_lines = build_page_from_template(target)
     actual_lines = await state.diary_client.fetch_page_lines(title)
     expected = normalize_lines(expected_lines)

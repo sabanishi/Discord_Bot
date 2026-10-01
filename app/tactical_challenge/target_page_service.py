@@ -1,8 +1,11 @@
 from dataclasses import dataclass
-
 from .aliases import build_student_aliases, parse_alias_rules
 from .page_changes import build_page_changes
 from .page_parser import extract_page_students, refactor_page_lines
+from .gyazo_client import GyazoUpload
+from .cosense_client import TacticalChallengeCosenseClient
+from .gyazo_client import GyazoClient
+from .wiki_client import BlueArchiveWikiClient
 
 
 ALIAS_CONFIG_PAGE = "戦術対抗戦_略称"
@@ -18,11 +21,11 @@ class TargetPageResult:
 
 
 async def refactor_target_pages(
-    wiki_client,
-    gyazo_client,
-    cosense_client,
+    wiki_client: BlueArchiveWikiClient,
+    gyazo_client: GyazoClient,
+    cosense_client: TacticalChallengeCosenseClient,
     target_title: str | None = None,
-):
+) -> list[TargetPageResult]:
     """不足アイコンを生成し、差分がある対象ページだけ更新する。"""
     alias_page = await cosense_client.fetch_page(ALIAS_CONFIG_PAGE)
     config = parse_alias_rules(
