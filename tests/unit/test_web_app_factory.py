@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from app.web_server import create_app
+from app.web_server import WebServer, create_app
 
 
 class WebAppFactoryTests(unittest.TestCase):
@@ -32,26 +32,24 @@ class WebAppFactoryTests(unittest.TestCase):
 
     def test_start_web_server_returns_daemon_thread(self):
         import app.web_server as web_server
-
+        server = WebServer(register_api=False)
         with patch.object(web_server, "Thread") as thread_class:
             thread = thread_class.return_value
-            result = web_server.start_web_server()
+            result = server.start()
 
-        thread_class.assert_called_once_with(target=web_server.run, daemon=True)
+        thread_class.assert_called_once_with(target=server.run, daemon=True)
         thread.start.assert_called_once_with()
         self.assertIs(result, thread)
 
     def test_stop_web_server_shuts_down_running_server(self):
-        import app.web_server as web_server
-
-        server = Mock()
+        server = WebServer(register_api=False)
+        running_server = Mock()
         thread = Mock()
-        with patch.object(web_server, "_server", server), patch.object(
-            web_server, "_server_thread", thread
-        ):
-            web_server.stop_web_server()
+        server._state.server = running_server
+        server._state.thread = thread
+        server.stop()
 
-        server.shutdown.assert_called_once_with()
+        running_server.shutdown.assert_called_once_with()
         thread.join.assert_called_once_with(timeout=5)
 
 

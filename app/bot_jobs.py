@@ -9,6 +9,19 @@ from app.tactical_challenge.scheduler import (
 )
 
 
+def register_scheduled_tasks(client, state, notifier) -> bool:
+    if getattr(state, "tasks_started", False):
+        return False
+
+    state.tasks_started = True
+    client.loop.create_task(create_page_loop(client, state, notifier))
+    client.loop.create_task(check_page_loop(client, state, notifier))
+    client.loop.create_task(tactical_challenge_loop(client, state, notifier))
+    if state.config.link_warning_enabled:
+        client.loop.create_task(link_warning_loop(client, state, notifier))
+    return True
+
+
 async def create_page_loop(client, state, notifier) -> None:
     async def job(target):
         print(f"Scrapboxページを作成します: {target}", flush=True)
@@ -23,7 +36,8 @@ async def create_page_loop(client, state, notifier) -> None:
         )
 
     await run_daily_loop(
-        client=client,
+        wait_until_ready=client.wait_until_ready,
+        is_closed=client.is_closed,
         hour=state.config.create_page_time[0],
         minute=state.config.create_page_time[1],
         job=job,
@@ -45,7 +59,8 @@ async def check_page_loop(client, state, notifier) -> None:
         )
 
     await run_daily_loop(
-        client=client,
+        wait_until_ready=client.wait_until_ready,
+        is_closed=client.is_closed,
         hour=state.config.check_page_time[0],
         minute=state.config.check_page_time[1],
         job=job,
@@ -70,7 +85,8 @@ async def tactical_challenge_loop(client, state, notifier) -> None:
         )
 
     await run_daily_loop(
-        client=client,
+        wait_until_ready=client.wait_until_ready,
+        is_closed=client.is_closed,
         hour=state.config.check_page_time[0],
         minute=state.config.check_page_time[1],
         job=job,

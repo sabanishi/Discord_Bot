@@ -113,8 +113,9 @@ class SchedulingTests(unittest.TestCase):
             return "target"
 
         asyncio.run(
-        __import__("app.scheduling", fromlist=["run_daily_loop"]).run_daily_loop(
-                client=Client(),
+            __import__("app.scheduling", fromlist=["run_daily_loop"]).run_daily_loop(
+                wait_until_ready=Client().wait_until_ready,
+                is_closed=Client().is_closed,
                 hour=7,
                 minute=0,
                 job=job,
@@ -140,7 +141,8 @@ class SchedulingTests(unittest.TestCase):
 
         asyncio.run(
         __import__("app.scheduling", fromlist=["run_daily_loop"]).run_daily_loop(
-                client=Client(),
+                wait_until_ready=Client().wait_until_ready,
+                is_closed=Client().is_closed,
                 hour=7,
                 minute=0,
                 job=job,

@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import dataclass
 
 from flask import Flask, send_file
 from threading import Thread
@@ -51,34 +52,28 @@ def create_app(register_api: bool = True) -> Flask:
     return app
 
 
-app = create_app(register_api=False)
-_server = None
-_server_thread = None
+class WebServer:
+    @dataclass
+    class State:
+        server: object | None = None
+        thread: Thread | None = None
 
+    def __init__(self, register_api: bool = True):
+        self.app = create_app(register_api=register_api)
+        self._state = self.State()
 
-def run():
-    global _server
-    _server = make_server("0.0.0.0", 8080, app)
-    _server.serve_forever()
+    def run(self) -> None:
+        self._state.server = make_server("0.0.0.0", 8080, self.app)
+        self._state.server.serve_forever()
 
+    def start(self):
+        self._state.thread = Thread(target=self.run, daemon=True)
+        self._state.thread.start()
+        return self._state.thread
 
-def start_web_server():
-    global _server_thread
-    t = Thread(target=run, daemon=True)
-    _server_thread = t
-    t.start()
-    return t
-
-
-def stop_web_server():
-    global _server, _server_thread
-    if _server is not None:
-        _server.shutdown()
-    if _server_thread is not None:
-        _server_thread.join(timeout=5)
-    _server = None
-    _server_thread = None
-
-
-def register_tactical_challenge_api(app: Flask = app):
-    _register_tactical_challenge_api(app)
+    def stop(self) -> None:
+        if self._state.server is not None:
+            self._state.server.shutdown()
+        if self._state.thread is not None:
+            self._state.thread.join(timeout=5)
+        self._state = self.State()

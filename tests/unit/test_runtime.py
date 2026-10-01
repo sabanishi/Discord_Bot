@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from app.config import AppConfig
-from app.runtime import RuntimeState, initialize_runtime, validate_env
+from app.runtime import RuntimeState, initialize_runtime
 
 
 class RuntimeTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class RuntimeTests(unittest.TestCase):
 
         with patch("app.runtime.load_config", return_value=config), patch(
             "app.runtime.DiaryClient"
-        ) as diary_client:
+        ) as diary_client, patch.object(RuntimeState, "validate_env") as validate:
             state = initialize_runtime()
 
         self.assertIsInstance(state, RuntimeState)
@@ -33,6 +33,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertIs(state.diary_client, diary_client.return_value)
         self.assertEqual(state.link_warning_state.warning_threshold, 30)
         diary_client.assert_called_once_with("project", "connect.sid=value")
+        validate.assert_called_once_with()
 
     def test_validate_env_rejects_missing_required_values(self):
         state = RuntimeState(config=AppConfig(
@@ -52,4 +53,4 @@ class RuntimeTests(unittest.TestCase):
         ))
 
         with self.assertRaisesRegex(RuntimeError, "DISCORD_TOKEN"):
-            validate_env(state)
+            state.validate_env()

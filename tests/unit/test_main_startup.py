@@ -16,10 +16,25 @@ class MainStartupTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) and node.name == "main":
                 main_function_calls_client_run = any(
                     isinstance(child, ast.Call)
-                    and isinstance(child.func, ast.Attribute)
-                    and isinstance(child.func.value, ast.Name)
-                    and child.func.value.id == "client"
-                    and child.func.attr == "run"
+                    and (
+                        (
+                            isinstance(child.func, ast.Attribute)
+                            and isinstance(child.func.value, ast.Name)
+                            and child.func.value.id == "client"
+                            and child.func.attr == "run"
+                        )
+                        or (
+                            isinstance(child.func, ast.Name)
+                            and child.func.id == "run_discord_bot"
+                        )
+                        or (
+                            isinstance(child.func, ast.Attribute)
+                            and child.func.attr == "run"
+                            and isinstance(child.func.value, ast.Call)
+                            and isinstance(child.func.value.func, ast.Name)
+                            and child.func.value.func.id == "DiscordBot"
+                        )
+                    )
                     for child in ast.walk(node)
                 )
             if not isinstance(node, ast.If):

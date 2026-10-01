@@ -43,15 +43,16 @@ async def run_interval_loop(
 
 async def run_daily_loop(
     *,
-    client,
+    wait_until_ready: Callable[[], Awaitable[None]],
+    is_closed: Callable[[], bool],
     hour: int,
     minute: int,
     job: Callable[[datetime], Awaitable[None]],
     on_error: Callable[[Exception], Awaitable[None]],
     sleep_until: Callable[[int, int], Awaitable[datetime]] = sleep_until_next_time,
 ) -> None:
-    await client.wait_until_ready()
-    while not client.is_closed():
+    await wait_until_ready()
+    while not is_closed():
         target = await sleep_until(hour, minute)
         try:
             await job(target)

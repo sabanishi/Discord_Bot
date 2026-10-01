@@ -1,46 +1,13 @@
-import aiohttp
-import discord
-from app.notifications import DiscordNotifier
-from app.client_tasks import register_scheduled_tasks
-from app.web_server import register_tactical_challenge_api, start_web_server, stop_web_server
-from app.runtime import RuntimeState, initialize_runtime as build_runtime, validate_env as validate_runtime_env
+from app.discord_bot import DiscordBot
+from app.web_server import WebServer
+from app.runtime import initialize_runtime as build_runtime
 
-client = discord.Client(intents=discord.Intents.default())
-notifier = DiscordNotifier(client)
-
-
-runtime = RuntimeState()
-
-
-def initialize_runtime() -> None:
-    global runtime
-    initialized = build_runtime()
-    runtime = initialized
-
-
-@client.event
-async def on_ready() -> None:
-    print("ログインしました", flush=True)
-
-    if runtime.http_session is None or runtime.http_session.closed:
-        runtime.http_session = aiohttp.ClientSession()
-        runtime.diary_client.session = runtime.http_session
-
-    register_scheduled_tasks(client, runtime, notifier)
-
-
-@client.event
-async def on_disconnect() -> None:
-    if runtime.http_session is not None and not runtime.http_session.closed:
-        await runtime.http_session.close()
-    stop_web_server()
 
 def main() -> None:
-    initialize_runtime()
-    validate_runtime_env(runtime)
-    register_tactical_challenge_api()
-    start_web_server()
-    client.run(runtime.config.token)
+    runtime = build_runtime()
+    web_server = WebServer()
+    web_server.start()
+    DiscordBot(runtime, web_server).run()
 
 
 if __name__ == "__main__":

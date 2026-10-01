@@ -15,10 +15,22 @@ class RuntimeState:
     http_session: aiohttp.ClientSession | None = None
     tasks_started: bool = False
 
+    def validate_env(self) -> None:
+        if not self.config.token:
+            raise RuntimeError("環境変数 DISCORD_TOKEN が設定されていません")
+        if not self.config.default_channel_id:
+            raise RuntimeError("環境変数 DISCORD_DEFAULT_CHANNEL_ID が設定されていません")
+        if not self.config.alert_channel_id:
+            raise RuntimeError("環境変数 DISCORD_ALERT_CHANNEL_ID が設定されていません")
+        if not self.config.cosense_project:
+            raise RuntimeError("環境変数 COSENSE_PROJECT が設定されていません")
+        if not self.config.cosense_sid:
+            raise RuntimeError("環境変数 COSENSE_SID が設定されていません")
+
 
 def initialize_runtime() -> RuntimeState:
     config = load_config()
-    return RuntimeState(
+    state = RuntimeState(
         config=config,
         link_warning_state=LinkWarningState(
             warning_threshold=config.link_warning_threshold,
@@ -26,17 +38,5 @@ def initialize_runtime() -> RuntimeState:
         ),
         diary_client=DiaryClient(config.cosense_project, config.cosense_sid),
     )
-
-
-def validate_env(state: RuntimeState) -> None:
-    config = state.config
-    if not config.token:
-        raise RuntimeError("環境変数 DISCORD_TOKEN が設定されていません")
-    if not config.default_channel_id:
-        raise RuntimeError("環境変数 DISCORD_DEFAULT_CHANNEL_ID が設定されていません")
-    if not config.alert_channel_id:
-        raise RuntimeError("環境変数 DISCORD_ALERT_CHANNEL_ID が設定されていません")
-    if not config.cosense_project:
-        raise RuntimeError("環境変数 COSENSE_PROJECT が設定されていません")
-    if not config.cosense_sid:
-        raise RuntimeError("環境変数 COSENSE_SID が設定されていません")
+    state.validate_env()
+    return state
