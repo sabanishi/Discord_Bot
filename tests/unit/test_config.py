@@ -21,6 +21,9 @@ class ConfigTests(unittest.TestCase):
                 "DISCORD_ALERT_CHANNEL_ID": "456",
                 "COSENSE_PROJECT": "project",
                 "COSENSE_SID": "connect.sid=session",
+                "MIRROR_PUBLIC_PROJECT": "public-project",
+                "MIRROR_EXCLUSION_CONFIG_PAGE": "除外設定",
+                "MIRROR_REPLACEMENT_CONFIG_PAGE": "置換設定",
                 "MENTION_TARGET": "789",
                 "CREATE_PAGE_TIME": "06:30",
                 "LINK_WARNING_ENABLED": "off",
@@ -63,29 +66,30 @@ class ConfigTests(unittest.TestCase):
     def test_load_config_reads_mirroring_settings(self):
         config = load_config(
             {
-                "MIRROR_ENABLED": "true",
                 "MIRROR_PUBLIC_PROJECT": "public-project",
                 "MIRROR_EXCLUSION_CONFIG_PAGE": "ミラー除外設定",
                 "MIRROR_REPLACEMENT_CONFIG_PAGE": "ミラー置換設定",
+                "MIRROR_RUN_HOURS": "8,16,24",
             }
         )
 
-        self.assertTrue(config.mirror_enabled)
         self.assertEqual(config.mirror_public_project, "public-project")
         self.assertEqual(config.mirror_exclusion_config_page, "ミラー除外設定")
         self.assertEqual(config.mirror_replacement_config_page, "ミラー置換設定")
+        self.assertEqual(config.mirror_run_hours, (8, 16, 0))
 
-    def test_mirroring_is_disabled_by_default(self):
+    def test_mirroring_run_hours_have_default_schedule(self):
         config = load_config({})
 
-        self.assertFalse(config.mirror_enabled)
-        self.assertIsNone(config.mirror_public_project)
-        self.assertEqual(config.mirror_exclusion_config_page, "")
-        self.assertEqual(config.mirror_replacement_config_page, "")
+        self.assertEqual(config.mirror_run_hours, (8, 16, 0))
 
-    def test_invalid_mirroring_enabled_value_is_rejected(self):
-        with self.assertRaisesRegex(RuntimeError, "MIRROR_ENABLED"):
-            load_config({"MIRROR_ENABLED": "sometimes"})
+    def test_invalid_mirroring_run_hours_are_rejected(self):
+        cases = ["8,16", "8,8,24", "8,25,24", "8,16,24:00"]
+
+        for value in cases:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(RuntimeError, "MIRROR_RUN_HOURS"):
+                    load_config({"MIRROR_RUN_HOURS": value})
 
 
 if __name__ == "__main__":

@@ -18,10 +18,10 @@ class AppConfig:
     link_warning_threshold: int
     link_warning_resolve_threshold: int
     link_warning_config_page: str
-    mirror_enabled: bool = False
     mirror_public_project: str | None = None
     mirror_exclusion_config_page: str = ""
     mirror_replacement_config_page: str = ""
+    mirror_run_hours: tuple[int, ...] = (8, 16, 0)
 
 
 def normalize_sid(sid: str) -> str:
@@ -72,6 +72,34 @@ def _parse_time(value: str, env_name: str) -> tuple[int, int]:
     if not 0 <= minute <= 59:
         raise RuntimeError(f"環境変数 {env_name} の分が不正です。0〜59で指定してください\n現在の値: {value}")
     return hour, minute
+
+
+def _parse_mirror_run_hours(value: str, env_name: str) -> tuple[int, ...]:
+    entries = [entry.strip() for entry in value.split(",")]
+    if len(entries) != 3 or len(set(entries)) != 3:
+        raise RuntimeError(
+            f"環境変数 {env_name} は異なる時を3つ、カンマ区切りで指定してください"
+        )
+
+    hours: list[int] = []
+    for entry in entries:
+        try:
+            hour = int(entry)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"環境変数 {env_name} は 時,時,時 形式で指定してください"
+            ) from exc
+
+        if hour == 24:
+            hour = 0
+        elif not 0 <= hour <= 23:
+            raise RuntimeError(
+                f"環境変数 {env_name} の時が不正です: {entry}"
+            )
+        hours.append(hour)
+    if len(set(hours)) != 3:
+        raise RuntimeError(f"環境変数 {env_name} は異なる時を指定してください")
+    return tuple(hours)
 
 
 def load_config(environ: Mapping[str, str] | None = None) -> AppConfig:
@@ -126,9 +154,6 @@ def load_config(environ: Mapping[str, str] | None = None) -> AppConfig:
         link_warning_threshold=warning_threshold,
         link_warning_resolve_threshold=resolve_threshold,
         link_warning_config_page=values.get("LINK_WARNING_CONFIG_PAGE", "").strip(),
-        mirror_enabled=_parse_bool(
-            values.get("MIRROR_ENABLED", "false"), "MIRROR_ENABLED"
-        ),
         mirror_public_project=(
             values.get("MIRROR_PUBLIC_PROJECT", "").strip() or None
         ),
@@ -138,4 +163,8 @@ def load_config(environ: Mapping[str, str] | None = None) -> AppConfig:
         mirror_replacement_config_page=values.get(
             "MIRROR_REPLACEMENT_CONFIG_PAGE", ""
         ).strip(),
+        mirror_run_hours=_parse_mirror_run_hours(
+            values.get("MIRROR_RUN_HOURS", "8,16,24"),
+            "MIRROR_RUN_HOURS",
+        ),
     )

@@ -32,37 +32,34 @@ class RuntimeState:
             raise RuntimeError("環境変数 COSENSE_PROJECT が設定されていません")
         if not self.config.cosense_sid or not self.config.cosense_sid.strip():
             raise RuntimeError("環境変数 COSENSE_SID が設定されていません")
-        if self.config.mirror_enabled:
-            if (
-                not self.config.mirror_public_project
-                or not self.config.mirror_public_project.strip()
-            ):
-                raise RuntimeError("環境変数 MIRROR_PUBLIC_PROJECT が設定されていません")
-            if not self.config.mirror_exclusion_config_page:
-                raise RuntimeError(
-                    "環境変数 MIRROR_EXCLUSION_CONFIG_PAGE が設定されていません"
-                )
-            if not self.config.mirror_replacement_config_page:
-                raise RuntimeError(
-                    "環境変数 MIRROR_REPLACEMENT_CONFIG_PAGE が設定されていません"
-                )
+        if (
+            not self.config.mirror_public_project
+            or not self.config.mirror_public_project.strip()
+        ):
+            raise RuntimeError("環境変数 MIRROR_PUBLIC_PROJECT が設定されていません")
+        if not self.config.mirror_exclusion_config_page:
+            raise RuntimeError(
+                "環境変数 MIRROR_EXCLUSION_CONFIG_PAGE が設定されていません"
+            )
+        if not self.config.mirror_replacement_config_page:
+            raise RuntimeError(
+                "環境変数 MIRROR_REPLACEMENT_CONFIG_PAGE が設定されていません"
+            )
 
 
 def initialize_runtime() -> RuntimeState:
     """設定と外部サービスクライアントを構築し、検証済みの状態を返す"""
     config = load_config()
-    mirror_service = None
-    if config.mirror_enabled:
-        source_client = MirrorCosenseClient(config.cosense_project, config.cosense_sid)
-        destination_client = MirrorCosenseClient(
-            config.mirror_public_project, config.cosense_sid
-        )
-        mirror_service = MirrorService(
-            source_client,
-            destination_client,
-            config.mirror_exclusion_config_page,
-            config.mirror_replacement_config_page,
-        )
+    source_client = MirrorCosenseClient(config.cosense_project, config.cosense_sid)
+    destination_client = MirrorCosenseClient(
+        config.mirror_public_project, config.cosense_sid
+    )
+    mirror_service = MirrorService(
+        source_client,
+        destination_client,
+        config.mirror_exclusion_config_page,
+        config.mirror_replacement_config_page,
+    )
 
     state = RuntimeState(
         config=config,

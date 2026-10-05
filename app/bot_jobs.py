@@ -24,7 +24,7 @@ def register_scheduled_tasks(client: discord.Client, state: RuntimeState, notifi
     client.loop.create_task(check_page_loop(client, state, notifier))
     client.loop.create_task(tactical_challenge_loop(client, state, notifier))
     if getattr(state, "mirror_service", None) is not None:
-        for hour in (8, 16, 0):
+        for hour in state.config.mirror_run_hours:
             client.loop.create_task(mirror_loop(client, state, notifier, hour))
     if state.config.link_warning_enabled:
         client.loop.create_task(link_warning_loop(client, state, notifier))

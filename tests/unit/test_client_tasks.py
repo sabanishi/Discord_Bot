@@ -23,11 +23,14 @@ class ClientTaskRegistrationTests(unittest.TestCase):
 
         self.assertEqual(len(created), 4)
 
-    def test_registers_mirroring_at_three_daily_times_when_enabled(self):
+    def test_registers_mirroring_at_three_daily_hours(self):
         created = []
         client = SimpleNamespace(loop=SimpleNamespace(create_task=created.append))
         state = SimpleNamespace(
-            config=SimpleNamespace(link_warning_enabled=False),
+            config=SimpleNamespace(
+                link_warning_enabled=False,
+                mirror_run_hours=(8, 16, 0),
+            ),
             mirror_service=object(),
         )
         notifier = object()
@@ -45,6 +48,6 @@ class ClientTaskRegistrationTests(unittest.TestCase):
 
         self.assertEqual(mirror_loop.call_count, 3)
         self.assertEqual(
-            [call.args[3] for call in mirror_loop.call_args_list],
-            [8, 16, 0],
+            [call.args[3:] for call in mirror_loop.call_args_list],
+            [(8,), (16,), (0,)],
         )
