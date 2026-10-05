@@ -130,4 +130,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # ミラーリング機能は一時停止中
+    pass

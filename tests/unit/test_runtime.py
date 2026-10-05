@@ -154,7 +154,7 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "COSENSE_SID"):
             state.validate_env()
 
-    def test_initialize_runtime_always_builds_mirroring_service(self):
+    def test_initialize_runtime_disables_mirroring_service(self):
         config = AppConfig(
             token="token",
             default_channel_id=1,
@@ -181,13 +181,5 @@ class RuntimeTests(unittest.TestCase):
         ):
             state = initialize_runtime()
 
-        self.assertIsNotNone(state.mirror_service)
-        self.assertEqual(client.call_count, 2)
-        self.assertEqual(
-            client.call_args_list[0].args,
-            ("private", "private-sid"),
-        )
-        self.assertEqual(
-            client.call_args_list[1].args,
-            ("public", "private-sid"),
-        )
+        self.assertIsNone(state.mirror_service)
+        self.assertEqual(client.call_count, 0)

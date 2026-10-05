@@ -50,16 +50,18 @@ class RuntimeState:
 def initialize_runtime() -> RuntimeState:
     """設定と外部サービスクライアントを構築し、検証済みの状態を返す"""
     config = load_config()
-    source_client = MirrorCosenseClient(config.cosense_project, config.cosense_sid)
-    destination_client = MirrorCosenseClient(
-        config.mirror_public_project, config.cosense_sid
-    )
-    mirror_service = MirrorService(
-        source_client,
-        destination_client,
-        config.mirror_exclusion_config_page,
-        config.mirror_replacement_config_page,
-    )
+    # ミラーリング機能は一時停止中
+    # source_client = MirrorCosenseClient(config.cosense_project, config.cosense_sid)
+    # destination_client = MirrorCosenseClient(
+    #     config.mirror_public_project, config.cosense_sid
+    # )
+    # mirror_service = MirrorService(
+    #     source_client,
+    #     destination_client,
+    #     config.mirror_exclusion_config_page,
+    #     config.mirror_replacement_config_page,
+    # )
+    mirror_service = None
 
     state = RuntimeState(
         config=config,
