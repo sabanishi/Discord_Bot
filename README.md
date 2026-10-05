@@ -26,11 +26,3 @@
    ```bash
    set -a; source .env; set +a; python main.py
    ```
-
-### ミラーリングを手動で1回実行
-
-Botを起動せず、定期実行と同じミラーリング処理を1回だけ実行できます。
-
-```bash
-set -a; source .env; set +a; python -m tools.run_mirroring
-```

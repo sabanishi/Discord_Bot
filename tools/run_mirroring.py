@@ -1,10 +1,16 @@
 import asyncio
+import argparse
 from typing import Mapping
 
 import aiohttp
 
 from app.config import AppConfig, load_config
-from app.mirroring import MirrorCosenseClient, MirrorRunResult, MirrorService
+from app.mirroring import (
+    MirrorCosenseClient,
+    MirrorPreviewResult,
+    MirrorRunResult,
+    MirrorService,
+)
 
 
 def _required(value: str | None, env_name: str) -> str:
@@ -52,6 +58,15 @@ async def run_once(environ: Mapping[str, str] | None = None) -> MirrorRunResult:
         return await service.run()
 
 
+async def preview_once(environ: Mapping[str, str] | None = None) -> MirrorPreviewResult:
+    config = load_config(environ)
+    _validate_config(config)
+    timeout = aiohttp.ClientTimeout(total=30)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        service = _build_service(config, session)
+        return await service.preview()
+
+
 def print_result(result: MirrorRunResult) -> None:
     print(
         "ミラーリングが完了しました: "
@@ -65,9 +80,59 @@ def print_result(result: MirrorRunResult) -> None:
     )
 
 
+def print_preview(result: MirrorPreviewResult) -> None:
+    print("ミラーリングプレビュー（Publicへの書き込みなし）", flush=True)
+    print("\n置換ルール:", flush=True)
+    if result.replacement_rules:
+        for source, replacement in result.replacement_rules.items():
+            print(f"- {source} => {replacement}", flush=True)
+    else:
+        print("- なし", flush=True)
+
+    print("\nミラーリング対象ページ:", flush=True)
+    if result.included_titles:
+        for source, destination in result.included_titles:
+            if source == destination:
+                print(f"- {source}", flush=True)
+            else:
+                print(f"- {source} => {destination}", flush=True)
+    else:
+        print("- なし", flush=True)
+
+    print("\n除外ページ:", flush=True)
+    if result.excluded_titles:
+        for title in result.excluded_titles:
+            print(f"- {title}", flush=True)
+    else:
+        print("- なし", flush=True)
+
+    if result.failed_titles:
+        print("\n判定・変換に失敗したページ:", flush=True)
+        for title in result.failed_titles:
+            print(f"- {title}", flush=True)
+
+    if result.title_collisions:
+        print("\n置換後にタイトルが重複するページ:", flush=True)
+        for title in result.title_collisions:
+            print(f"- {title}", flush=True)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Scrapboxのミラーリングを実行します")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Publicプロジェクトへ書き込まず、対象ページと置換ルールだけ表示する",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    result = asyncio.run(run_once())
-    print_result(result)
+    args = parse_args()
+    if args.preview:
+        print_preview(asyncio.run(preview_once()))
+    else:
+        print_result(asyncio.run(run_once()))
 
 
 if __name__ == "__main__":

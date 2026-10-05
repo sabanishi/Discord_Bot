@@ -4,6 +4,7 @@ import asyncio
 import copy
 import json
 import re
+from dataclasses import dataclass
 from typing import TypeAlias
 from urllib.parse import quote
 
@@ -271,28 +272,87 @@ def _transform_line(
     title_map: dict[str, str],
     replacements: dict[str, str],
 ) -> str:
-    def replace_link(match: re.Match[str]) -> str:
-        target = match.group(1).strip()
-        if target.startswith(("http://", "https://")):
-            reference = match.group(0)
-        elif target in title_map:
-            reference = f"[{title_map[target]}]"
-        elif ATTACHMENT_REFERENCE_PATTERN.fullmatch(target):
-            reference = match.group(0)
-        else:
-            return ""
-        return reference
-
     transformed_parts: list[str] = []
-    previous_end = 0
-    for match in INTERNAL_LINK_PATTERN.finditer(text):
+    cursor = 0
+    while cursor < len(text):
+        start = text.find("[", cursor)
+        if start < 0:
+            transformed_parts.append(_replace_strings(text[cursor:], replacements))
+            break
+        transformed_parts.append(_replace_strings(text[cursor:start], replacements))
+        end = _find_closing_bracket(text, start)
+        if end < 0:
+            transformed_parts.append(_replace_strings(text[start:], replacements))
+            break
         transformed_parts.append(
-            _replace_strings(text[previous_end : match.start()], replacements)
+            _transform_bracket(text[start : end + 1], title_map, replacements)
         )
-        transformed_parts.append(replace_link(match))
-        previous_end = match.end()
-    transformed_parts.append(_replace_strings(text[previous_end:], replacements))
+        cursor = end + 1
     return "".join(transformed_parts)
+
+
+def _find_closing_bracket(text: str, start: int) -> int:
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "[":
+            depth += 1
+        elif text[index] == "]":
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
+
+
+def _transform_bracket(
+    bracket: str,
+    title_map: dict[str, str],
+    replacements: dict[str, str],
+) -> str:
+    content = bracket[1:-1]
+    if "[" in content:
+        return f"[{_transform_nested_brackets(content, title_map, replacements)}]"
+
+    target = content.strip()
+    if target in title_map:
+        return f"[{title_map[target]}]"
+    if _is_non_page_reference(target):
+        return bracket
+    return ""
+
+
+def _transform_nested_brackets(
+    text: str,
+    title_map: dict[str, str],
+    replacements: dict[str, str],
+) -> str:
+    transformed_parts: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        start = text.find("[", cursor)
+        if start < 0:
+            transformed_parts.append(text[cursor:])
+            break
+        transformed_parts.append(text[cursor:start])
+        end = _find_closing_bracket(text, start)
+        if end < 0:
+            transformed_parts.append(text[start:])
+            break
+        transformed_parts.append(
+            _transform_bracket(text[start : end + 1], title_map, replacements)
+        )
+        cursor = end + 1
+    return "".join(transformed_parts)
+
+
+def _is_non_page_reference(target: str) -> bool:
+    return (
+        "http://" in target
+        or "https://" in target
+        or target.startswith("/icons/")
+        or target.endswith(".icon")
+        or target.startswith(("&", ".", "#<>", "**"))
+        or ATTACHMENT_REFERENCE_PATTERN.fullmatch(target) is not None
+    )
 
 
 def _replace_strings(text: str, replacements: dict[str, str]) -> str:
@@ -340,6 +400,27 @@ class MirrorRunResult:
         self.failed_titles = failed_titles
 
 
+@dataclass
+class MirrorPreviewResult:
+    replacement_rules: dict[str, str]
+    included_titles: list[tuple[str, str]]
+    excluded_titles: list[str]
+    failed_titles: list[str]
+    title_collisions: list[str]
+
+
+@dataclass
+class _PreparedMirror:
+    transformed_pages: list[JsonObject]
+    failed_source_titles: set[str]
+    replacement_rules: dict[str, str]
+    included_titles: list[tuple[str, str]]
+    excluded_titles: list[str]
+    failed_titles: list[str]
+    failed_pages: int
+    title_collisions: list[str]
+
+
 class MirrorService:
     def __init__(
         self,
@@ -358,7 +439,69 @@ class MirrorService:
         async with self._run_lock:
             return await self._run_once()
 
+    async def preview(self) -> MirrorPreviewResult:
+        async with self._run_lock:
+            prepared = await self._prepare_pages(allow_title_collisions=True)
+            return MirrorPreviewResult(
+                replacement_rules=prepared.replacement_rules,
+                included_titles=prepared.included_titles,
+                excluded_titles=prepared.excluded_titles,
+                failed_titles=prepared.failed_titles,
+                title_collisions=prepared.title_collisions,
+            )
+
     async def _run_once(self) -> MirrorRunResult:
+        prepared = await self._prepare_pages()
+        transformed_pages = prepared.transformed_pages
+        failed_source_titles = prepared.failed_source_titles
+        excluded_titles = prepared.excluded_titles
+        failed_titles = prepared.failed_titles
+        excluded_pages = len(excluded_titles)
+        failed_pages = prepared.failed_pages
+
+        transformed_titles = [page["title"] for page in transformed_pages]
+        current_titles = set(transformed_titles)
+        destination_pages = await self.destination.export_pages()
+        existing_titles = {_page_title(page) for page in destination_pages}
+        stale_titles: list[str] = []
+        for page in destination_pages:
+            title = _page_title(page)
+            if title not in current_titles and title not in failed_source_titles:
+                stale_titles.append(title)
+        await self.destination.import_pages(transformed_pages)
+        deleted_titles: list[str] = []
+        for title in stale_titles:
+            try:
+                await self.destination.delete_page(title)
+            except Exception as error:
+                failed_pages += 1
+                failed_titles.append(title)
+                print(f"Publicページを削除できませんでした: {title}: {error}", flush=True)
+            else:
+                deleted_titles.append(title)
+        saved_pages = await self.destination.export_pages()
+        _verify_saved_pages(transformed_pages, saved_pages, deleted_titles)
+        return MirrorRunResult(
+            imported_pages=len(transformed_pages),
+            excluded_pages=excluded_pages,
+            failed_pages=failed_pages,
+            created_pages=len(current_titles - existing_titles),
+            updated_pages=len(current_titles & existing_titles),
+            deleted_pages=len(deleted_titles),
+            deleted_titles=deleted_titles,
+            created_titles=[
+                title for title in transformed_titles if title not in existing_titles
+            ],
+            updated_titles=[
+                title for title in transformed_titles if title in existing_titles
+            ],
+            excluded_titles=excluded_titles,
+            failed_titles=failed_titles,
+        )
+
+    async def _prepare_pages(
+        self, *, allow_title_collisions: bool = False
+    ) -> _PreparedMirror:
         excluded_tags = set(DEFAULT_EXCLUDED_TAGS)
         excluded_icons = set(DEFAULT_EXCLUDED_ICONS)
         if self.exclusion_config_page:
@@ -400,9 +543,14 @@ class MirrorService:
             for page in eligible_pages
         }
         transformed_pages: list[JsonObject] = []
+        included_titles: list[tuple[str, str]] = []
         for page in eligible_pages:
             try:
-                transformed_pages.append(_transform_page(page, title_map, replacements))
+                transformed_page = _transform_page(page, title_map, replacements)
+                transformed_pages.append(transformed_page)
+                included_titles.append(
+                    (_page_title(page), _page_title(transformed_page))
+                )
             except Exception as error:
                 failed_pages += 1
                 title = page.get("title")
@@ -413,44 +561,23 @@ class MirrorService:
 
         transformed_titles = [page["title"] for page in transformed_pages]
         current_titles = set(transformed_titles)
-        if len(current_titles) != len(transformed_titles):
+        title_counts = {
+            title: transformed_titles.count(title) for title in current_titles
+        }
+        title_collisions = sorted(
+            title for title, count in title_counts.items() if count > 1
+        )
+        if title_collisions and not allow_title_collisions:
             raise RuntimeError("Publicページのタイトルが重複するためミラーリングできません")
-        destination_pages = await self.destination.export_pages()
-        existing_titles = {_page_title(page) for page in destination_pages}
-        stale_titles: list[str] = []
-        for page in destination_pages:
-            title = _page_title(page)
-            if title not in current_titles and title not in failed_source_titles:
-                stale_titles.append(title)
-        await self.destination.import_pages(transformed_pages)
-        deleted_titles: list[str] = []
-        for title in stale_titles:
-            try:
-                await self.destination.delete_page(title)
-            except Exception as error:
-                failed_pages += 1
-                failed_titles.append(title)
-                print(f"Publicページを削除できませんでした: {title}: {error}", flush=True)
-            else:
-                deleted_titles.append(title)
-        saved_pages = await self.destination.export_pages()
-        _verify_saved_pages(transformed_pages, saved_pages, deleted_titles)
-        return MirrorRunResult(
-            imported_pages=len(transformed_pages),
-            excluded_pages=excluded_pages,
-            failed_pages=failed_pages,
-            created_pages=len(current_titles - existing_titles),
-            updated_pages=len(current_titles & existing_titles),
-            deleted_pages=len(deleted_titles),
-            deleted_titles=deleted_titles,
-            created_titles=[
-                title for title in transformed_titles if title not in existing_titles
-            ],
-            updated_titles=[
-                title for title in transformed_titles if title in existing_titles
-            ],
+        return _PreparedMirror(
+            transformed_pages=transformed_pages,
+            failed_source_titles=failed_source_titles,
+            replacement_rules=replacements,
+            included_titles=included_titles,
             excluded_titles=excluded_titles,
             failed_titles=failed_titles,
+            failed_pages=failed_pages,
+            title_collisions=title_collisions,
         )
 
 
@@ -466,10 +593,44 @@ def _verify_saved_pages(
         if saved is None:
             raise RuntimeError(f"保存後の確認に失敗しました: {title}が見つかりません")
         for key, value in expected.items():
-            if saved.get(key) != value:
+            if key == "id":
+                continue
+            if key == "lines":
+                _verify_saved_line_texts(title, value, saved.get(key))
+                continue
+            if _remove_generated_ids(saved.get(key)) != _remove_generated_ids(value):
                 raise RuntimeError(
                     f"保存後の確認に失敗しました: {title}の{key}が一致しません"
                 )
     for title in deleted_titles:
         if title in saved_by_title:
             raise RuntimeError(f"保存後の確認に失敗しました: {title}が削除されていません")
+
+
+def _verify_saved_line_texts(
+    title: str,
+    expected: JsonValue | None,
+    saved: JsonValue | None,
+) -> None:
+    if not isinstance(expected, list) or not isinstance(saved, list):
+        raise RuntimeError(f"保存後の確認に失敗しました: {title}のlinesが一致しません")
+    if any(not isinstance(line, dict) or not isinstance(line.get("text"), str) for line in expected):
+        raise RuntimeError(f"保存後の確認に失敗しました: {title}のlinesが一致しません")
+    if any(not isinstance(line, dict) or not isinstance(line.get("text"), str) for line in saved):
+        raise RuntimeError(f"保存後の確認に失敗しました: {title}のlinesが一致しません")
+    expected_texts = [line["text"] for line in expected]
+    saved_texts = [line["text"] for line in saved]
+    if expected_texts != saved_texts:
+        raise RuntimeError(f"保存後の確認に失敗しました: {title}のlinesが一致しません")
+
+
+def _remove_generated_ids(value: JsonValue | None) -> JsonValue | None:
+    if isinstance(value, dict):
+        return {
+            key: _remove_generated_ids(item)
+            for key, item in value.items()
+            if key != "id"
+        }
+    if isinstance(value, list):
+        return [_remove_generated_ids(item) for item in value]
+    return value
