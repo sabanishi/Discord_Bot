@@ -60,6 +60,33 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, env_name):
                     load_config(environ)
 
+    def test_load_config_reads_mirroring_settings(self):
+        config = load_config(
+            {
+                "MIRROR_ENABLED": "true",
+                "MIRROR_PUBLIC_PROJECT": "public-project",
+                "MIRROR_EXCLUSION_CONFIG_PAGE": "ミラー除外設定",
+                "MIRROR_REPLACEMENT_CONFIG_PAGE": "ミラー置換設定",
+            }
+        )
+
+        self.assertTrue(config.mirror_enabled)
+        self.assertEqual(config.mirror_public_project, "public-project")
+        self.assertEqual(config.mirror_exclusion_config_page, "ミラー除外設定")
+        self.assertEqual(config.mirror_replacement_config_page, "ミラー置換設定")
+
+    def test_mirroring_is_disabled_by_default(self):
+        config = load_config({})
+
+        self.assertFalse(config.mirror_enabled)
+        self.assertIsNone(config.mirror_public_project)
+        self.assertEqual(config.mirror_exclusion_config_page, "")
+        self.assertEqual(config.mirror_replacement_config_page, "")
+
+    def test_invalid_mirroring_enabled_value_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "MIRROR_ENABLED"):
+            load_config({"MIRROR_ENABLED": "sometimes"})
+
 
 if __name__ == "__main__":
     unittest.main()

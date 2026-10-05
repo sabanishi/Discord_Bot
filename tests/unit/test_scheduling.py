@@ -126,6 +126,47 @@ class SchedulingTests(unittest.TestCase):
 
         self.assertEqual(events, ["ready", "sleep:7:0", "job:target"])
 
+    def test_daily_loop_reports_job_error_and_continues_to_next_iteration(self):
+        events = []
+        closed = False
+
+        class Client:
+            async def wait_until_ready(self):
+                events.append("ready")
+
+            def is_closed(self):
+                return closed
+
+        async def job(target):
+            events.append(f"job:{target}")
+            raise ValueError("failed")
+
+        async def on_error(error):
+            events.append(f"error:{error}")
+
+        async def sleep_until(hour, minute):
+            nonlocal closed
+            events.append(f"sleep:{hour}:{minute}")
+            closed = True
+            return "target"
+
+        asyncio.run(
+            __import__("app.scheduling", fromlist=["run_daily_loop"]).run_daily_loop(
+                wait_until_ready=Client().wait_until_ready,
+                is_closed=Client().is_closed,
+                hour=16,
+                minute=0,
+                job=job,
+                on_error=on_error,
+                sleep_until=sleep_until,
+            )
+        )
+
+        self.assertEqual(
+            events,
+            ["ready", "sleep:16:0", "job:target", "error:failed"],
+        )
+
     def test_daily_loop_does_not_run_when_client_is_already_closed(self):
         events = []
 

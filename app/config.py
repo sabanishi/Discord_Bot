@@ -18,6 +18,10 @@ class AppConfig:
     link_warning_threshold: int
     link_warning_resolve_threshold: int
     link_warning_config_page: str
+    mirror_enabled: bool = False
+    mirror_public_project: str | None = None
+    mirror_exclusion_config_page: str = ""
+    mirror_replacement_config_page: str = ""
 
 
 def normalize_sid(sid: str) -> str:
@@ -122,4 +126,16 @@ def load_config(environ: Mapping[str, str] | None = None) -> AppConfig:
         link_warning_threshold=warning_threshold,
         link_warning_resolve_threshold=resolve_threshold,
         link_warning_config_page=values.get("LINK_WARNING_CONFIG_PAGE", "").strip(),
+        mirror_enabled=_parse_bool(
+            values.get("MIRROR_ENABLED", "false"), "MIRROR_ENABLED"
+        ),
+        mirror_public_project=(
+            values.get("MIRROR_PUBLIC_PROJECT", "").strip() or None
+        ),
+        mirror_exclusion_config_page=values.get(
+            "MIRROR_EXCLUSION_CONFIG_PAGE", ""
+        ).strip(),
+        mirror_replacement_config_page=values.get(
+            "MIRROR_REPLACEMENT_CONFIG_PAGE", ""
+        ).strip(),
     )

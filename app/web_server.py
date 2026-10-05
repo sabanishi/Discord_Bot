@@ -80,3 +80,6 @@ class WebServer:
         if self._state.thread is not None:
             self._state.thread.join(timeout=5)
         self._state = self.State()
+
+
+app = create_app()

@@ -23,6 +23,9 @@ def register_scheduled_tasks(client: discord.Client, state: RuntimeState, notifi
     client.loop.create_task(create_page_loop(client, state, notifier))
     client.loop.create_task(check_page_loop(client, state, notifier))
     client.loop.create_task(tactical_challenge_loop(client, state, notifier))
+    if getattr(state, "mirror_service", None) is not None:
+        for hour in (8, 16, 0):
+            client.loop.create_task(mirror_loop(client, state, notifier, hour))
     if state.config.link_warning_enabled:
         client.loop.create_task(link_warning_loop(client, state, notifier))
     return True
@@ -95,6 +98,35 @@ async def tactical_challenge_loop(client: discord.Client, state: RuntimeState, n
         is_closed=client.is_closed,
         hour=state.config.check_page_time[0],
         minute=state.config.check_page_time[1],
+        job=job,
+        on_error=on_error,
+    )
+
+
+async def mirror_loop(
+    client: discord.Client,
+    state: RuntimeState,
+    notifier: DiscordNotifier,
+    hour: int,
+) -> None:
+    async def job(target: datetime) -> None:
+        print(f"Scrapboxページをミラーリングします: {target}", flush=True)
+        await state.mirror_service.run()
+
+    async def on_error(error: Exception):
+        print(f"Scrapboxミラーリング処理でエラーが発生しました:\n{error}", flush=True)
+        await notifier.send(
+            state.config.alert_channel_id,
+            f"{state.config.mention_target}\n"
+            f"Scrapboxのミラーリングに失敗しました。\n"
+            f"<エラーログ>\n{error}",
+        )
+
+    await run_daily_loop(
+        wait_until_ready=client.wait_until_ready,
+        is_closed=client.is_closed,
+        hour=hour,
+        minute=0,
         job=job,
         on_error=on_error,
     )
