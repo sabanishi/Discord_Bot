@@ -51,7 +51,6 @@ class RunMirroringToolTests(unittest.TestCase):
             included_titles=[("原本ページ", "公開ページ")],
             excluded_titles=["除外ページ"],
             failed_titles=[],
-            title_collisions=[],
         )
         service = SimpleNamespace(
             preview=AsyncMock(return_value=preview),

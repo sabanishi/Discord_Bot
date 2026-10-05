@@ -111,12 +111,6 @@ def print_preview(result: MirrorPreviewResult) -> None:
         for title in result.failed_titles:
             print(f"- {title}", flush=True)
 
-    if result.title_collisions:
-        print("\n置換後にタイトルが重複するページ:", flush=True)
-        for title in result.title_collisions:
-            print(f"- {title}", flush=True)
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scrapboxのミラーリングを実行します")
     parser.add_argument(

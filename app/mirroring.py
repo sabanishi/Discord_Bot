@@ -317,7 +317,7 @@ def _transform_bracket(
         return f"[{title_map[target]}]"
     if _is_non_page_reference(target):
         return bracket
-    return ""
+    return bracket
 
 
 def _transform_nested_brackets(
@@ -406,7 +406,6 @@ class MirrorPreviewResult:
     included_titles: list[tuple[str, str]]
     excluded_titles: list[str]
     failed_titles: list[str]
-    title_collisions: list[str]
 
 
 @dataclass
@@ -418,7 +417,6 @@ class _PreparedMirror:
     excluded_titles: list[str]
     failed_titles: list[str]
     failed_pages: int
-    title_collisions: list[str]
 
 
 class MirrorService:
@@ -441,13 +439,12 @@ class MirrorService:
 
     async def preview(self) -> MirrorPreviewResult:
         async with self._run_lock:
-            prepared = await self._prepare_pages(allow_title_collisions=True)
+            prepared = await self._prepare_pages()
             return MirrorPreviewResult(
                 replacement_rules=prepared.replacement_rules,
                 included_titles=prepared.included_titles,
                 excluded_titles=prepared.excluded_titles,
                 failed_titles=prepared.failed_titles,
-                title_collisions=prepared.title_collisions,
             )
 
     async def _run_once(self) -> MirrorRunResult:
@@ -499,9 +496,7 @@ class MirrorService:
             failed_titles=failed_titles,
         )
 
-    async def _prepare_pages(
-        self, *, allow_title_collisions: bool = False
-    ) -> _PreparedMirror:
+    async def _prepare_pages(self) -> _PreparedMirror:
         excluded_tags = set(DEFAULT_EXCLUDED_TAGS)
         excluded_icons = set(DEFAULT_EXCLUDED_ICONS)
         if self.exclusion_config_page:
@@ -559,16 +554,6 @@ class MirrorService:
                     failed_titles.append(title)
                 print(f"ミラーリング対象ページを変換できませんでした: {error}", flush=True)
 
-        transformed_titles = [page["title"] for page in transformed_pages]
-        current_titles = set(transformed_titles)
-        title_counts = {
-            title: transformed_titles.count(title) for title in current_titles
-        }
-        title_collisions = sorted(
-            title for title, count in title_counts.items() if count > 1
-        )
-        if title_collisions and not allow_title_collisions:
-            raise RuntimeError("Publicページのタイトルが重複するためミラーリングできません")
         return _PreparedMirror(
             transformed_pages=transformed_pages,
             failed_source_titles=failed_source_titles,
@@ -577,7 +562,6 @@ class MirrorService:
             excluded_titles=excluded_titles,
             failed_titles=failed_titles,
             failed_pages=failed_pages,
-            title_collisions=title_collisions,
         )
 
 

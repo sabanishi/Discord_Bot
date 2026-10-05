@@ -15,7 +15,7 @@ from app.mirroring import (
 
 
 class ExportedPageTransformationTests(unittest.TestCase):
-    def test_excludes_pages_and_removes_links_to_excluded_pages(self):
+    def test_excludes_pages_without_removing_links_to_excluded_pages(self):
         pages = [
             {
                 "title": "公開ページ",
@@ -48,7 +48,7 @@ class ExportedPageTransformationTests(unittest.TestCase):
             result[0]["lines"],
             [
                 {"text": "公開ページ", "created": 100},
-                {"text": " [https://example.com/file.png]"},
+                {"text": "[非公開ページ] [https://example.com/file.png]"},
             ],
         )
         self.assertEqual(result[0]["created"], 100)
@@ -139,7 +139,7 @@ class ExportedPageTransformationTests(unittest.TestCase):
 
         self.assertEqual(
             result[0]["lines"],
-            [{"text": "[https://example.com/a.png] [画像.png] #keep "}],
+            [{"text": "[https://example.com/a.png] [画像.png] #keep [未公開]"}],
         )
 
     def test_preserves_scrapbox_decorations_icons_and_aliased_external_links(self):
@@ -172,7 +172,7 @@ class ExportedPageTransformationTests(unittest.TestCase):
                 "[水平線.icon] [/icons/水平線.icon] "
                 "[#<> 機能] [** 以下作業ログ] "
                 "[&.** [公開ページ]表示] "
-                "[.&** 表示]"
+                "[.&** [非公開ページ]表示]"
             ),
         )
 
@@ -671,28 +671,6 @@ class MirroringServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["公開名ページ"]["lines"][1]["text"], "公開名の本文")
         self.assertEqual(saved["案内"]["lines"][0]["text"], "[公開名ページ] 公開名")
 
-    async def test_run_rejects_replacement_title_collision_before_writing(self):
-        from app.mirroring import MirrorService
-
-        source = _FakeCosenseClient(
-            pages=[
-                {"title": "個人A", "lines": [{"text": "A"}]},
-                {"title": "個人B", "lines": [{"text": "B"}]},
-            ],
-            config_pages={
-                "置換設定": {
-                    "lines": [{"text": "個人A => 公開"}, {"text": "個人B => 公開"}]
-                },
-            },
-        )
-        destination = _FakeCosenseClient(pages=[])
-
-        with self.assertRaisesRegex(RuntimeError, "タイトルが重複"):
-            await MirrorService(source, destination, "", "置換設定").run()
-
-        self.assertEqual(destination.import_calls, 0)
-        self.assertEqual(destination.deleted_titles, [])
-
     async def test_run_rejects_when_saved_public_page_does_not_match(self):
         from app.mirroring import MirrorService
 
@@ -855,31 +833,6 @@ class MirroringServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(destination.export_calls, 0)
         self.assertEqual(destination.import_calls, 0)
         self.assertEqual(destination.deleted_titles, [])
-
-    async def test_preview_reports_title_collisions_without_public_writes(self):
-        from app.mirroring import MirrorService
-
-        source = _FakeCosenseClient(
-            pages=[
-                {"title": "個人A", "lines": [{"text": "個人A"}]},
-                {"title": "個人B", "lines": [{"text": "個人B"}]},
-            ],
-            config_pages={
-                "置換設定": {
-                    "lines": [
-                        {"text": "個人A => 公開"},
-                        {"text": "個人B => 公開"},
-                    ]
-                },
-            },
-        )
-        destination = _FakeCosenseClient(pages=[])
-
-        result = await MirrorService(source, destination, "", "置換設定").preview()
-
-        self.assertEqual(result.title_collisions, ["公開"])
-        self.assertEqual(destination.export_calls, 0)
-        self.assertEqual(destination.import_calls, 0)
 
     async def test_run_applies_custom_tags_and_icons_from_exclusion_page(self):
         from app.mirroring import MirrorService
