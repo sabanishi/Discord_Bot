@@ -196,6 +196,21 @@ class ExportedPageTransformationTests(unittest.TestCase):
             [{"text": "[https://private.example/a.png] [private.png]"}],
         )
 
+    def test_replaces_icon_reference_text(self):
+        result = transform_exported_pages(
+            [
+                {
+                    "title": "ページ",
+                    "lines": [{"text": "[PrivateUser.icon]"}],
+                }
+            ],
+            excluded_tags=set(),
+            excluded_icons=set(),
+            replacements={"PrivateUser": "PublicUser"},
+        )
+
+        self.assertEqual(result[0]["lines"], [{"text": "[PublicUser.icon]"}])
+
     def test_prefers_public_page_link_over_attachment_extension(self):
         result = transform_exported_pages(
             [

@@ -315,6 +315,8 @@ def _transform_bracket(
     target = content.strip()
     if target in title_map:
         return f"[{title_map[target]}]"
+    if target.endswith(".icon"):
+        return _replace_strings(bracket, replacements)
     if _is_non_page_reference(target):
         return bracket
     return bracket
