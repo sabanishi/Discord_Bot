@@ -14,6 +14,29 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class ExtractPageStudentsTest(unittest.TestCase):
+    def test_extracts_and_refactors_remaining_student_among_existing_icons(self) -> None:
+        aliases = build_student_aliases(
+            [StudentIcon("マリナ(チーパオ)", "https://example.com/marina.png")],
+            parse_alias_rules(["水着", " 水"]),
+        )
+        lines = [
+            "けぶさせ([!ホシノ(臨戦).icon])",
+            "　　[!エイミ.icon]・[!シロコ＊テラー.icon]・[!ユウカ.icon]・[!ハナコ(水着).icon]",
+            "　　[!レイサ(マジカル).icon]・[!ウタハ.icon]",
+            "　　[!イロハ(水着).icon]・[!ユウカ.icon]・チーパオマリナ・[!エイミ.icon]",
+        ]
+
+        students = extract_page_students(lines, aliases)
+
+        self.assertEqual(students, ["マリナ(チーパオ)"])
+        self.assertEqual(
+            refactor_page_lines(lines, aliases, replaceable_students=set(students)),
+            [
+                *lines[:-1],
+                "　　[!イロハ(水着).icon]・[!ユウカ.icon]・[!マリナ(チーパオ).icon]・[!エイミ.icon]",
+            ],
+        )
+
     def test_extracts_opponent_icons_and_formation_students(self):
         canonical_names = [
             "イオリ(水着)",

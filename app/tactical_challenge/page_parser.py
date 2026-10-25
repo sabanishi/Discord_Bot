@@ -45,11 +45,7 @@ def extract_page_students(
         recognized = [aliases[member] for member in members if member in aliases]
 
         is_single_student = len(members) == 1 and len(recognized) == 1
-        is_formation = (
-            len(members) >= 2
-            and len(recognized) >= 2
-            and len(recognized) / len(members) >= 0.5
-        )
+        is_formation = _is_multi_member_formation(line, aliases)
         if not is_single_student and not is_formation:
             continue
 
