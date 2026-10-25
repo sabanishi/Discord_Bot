@@ -109,6 +109,19 @@ const refactorCurrentPage = async () => {
     log("対象ページと判定", { title });
     showStatus("リファクタしています…");
     const result = await requestRefactorThroughBridge(title);
+    if (result.failed_icons?.length) {
+      const details = result.failed_icons
+        .map(({ student_name, reason }) => `${student_name}: ${reason}`)
+        .join("\n");
+      showStatus("アイコンを準備できなかった生徒がいます。", true);
+      notify(
+        `アイコンを準備できなかった生徒がいます。\n` +
+        `変更行: ${result.changed_lines}行\n` +
+        `新規アイコン: ${result.created_icons ?? 0}件\n${details}`,
+      );
+      if (result.changed_lines > 0) location.reload();
+      return;
+    }
     if (result.changed_lines === 0) {
       log("リファクタが完了しました", {
         title,

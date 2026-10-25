@@ -18,6 +18,7 @@ class TargetPageResult:
     title: str
     changed_lines: int
     created_icons: tuple[str, ...]
+    failed_icons: tuple[tuple[str, str], ...] = ()
 
 
 async def refactor_target_pages(
@@ -53,6 +54,7 @@ async def refactor_target_pages(
         ]
         students = extract_page_students(before, aliases)
         created_icons: list[str] = []
+        failed_icons: list[tuple[str, str]] = []
         available_students: set[str] = set()
         for student_name in students:
             try:
@@ -72,6 +74,7 @@ async def refactor_target_pages(
                     created_icons.append(student_name)
                 available_students.add(student_name)
             except Exception as error:
+                failed_icons.append((student_name, str(error)))
                 print(
                     f"アイコンを生成できませんでした: {student_name}: {error}",
                     flush=True,
@@ -94,6 +97,7 @@ async def refactor_target_pages(
                 title=title,
                 changed_lines=len(changes),
                 created_icons=tuple(created_icons),
+                failed_icons=tuple(failed_icons),
             )
         )
 

@@ -30,6 +30,25 @@ class TacticalChallengeHttpApiTest(unittest.TestCase):
         self.assertEqual(response.get_json()["created_icons"], 1)
         self.assertEqual(refactor.call_args.kwargs["target_title"], "対象")
 
+    def test_returns_icon_failure_details_with_unchanged_summary(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"COSENSE_PROJECT": "p", "COSENSE_SID": "s", "GYAZO_ACCESS_TOKEN": "g"},
+        ), patch(
+            "app.tactical_challenge.http_api.refactor_target_pages",
+            return_value=[TargetPageResult(
+                "対象", 0, (), failed_icons=(("アリス(臨戦)", "Gyazo upload failed"),),
+            )],
+        ):
+            response = app.test_client().post(
+                "/api/tactical-challenge/refactor", json={"title": "対象"},
+            )
+
+        self.assertEqual(response.get_json(), {
+            "title": "対象", "changed_lines": 0, "created_icons": 0,
+            "failed_icons": [{"student_name": "アリス(臨戦)", "reason": "Gyazo upload failed"}],
+        })
+
     def test_rejects_non_target_page(self):
         with patch.dict(
             os.environ,

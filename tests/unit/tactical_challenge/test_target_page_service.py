@@ -200,6 +200,7 @@ class RefactorTargetPagesTest(unittest.IsolatedAsyncioTestCase):
                     title="対抗戦シーズン11_対戦相手",
                     changed_lines=1,
                     created_icons=(),
+                    failed_icons=(("イオリ(水着)", "Gyazo upload failed"),),
                 )
             ],
         )

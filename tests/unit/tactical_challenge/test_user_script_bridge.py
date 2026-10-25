@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import subprocess
 import unittest
 
@@ -34,6 +35,8 @@ const fs = require("fs");
 const vm = require("vm");
 const nativeSource = fs.readFileSync(process.argv[1], "utf8");
 const bridgeSource = fs.readFileSync(process.argv[2], "utf8");
+const processResult = process.argv[3];
+const result = JSON.parse(processResult);
 const listeners = new Map();
 const alerts = [];
 const logs = [];
@@ -77,7 +80,7 @@ const context = {
   GM: {
     xmlHttpRequest: (options) => setTimeout(() => options.onload({
       status: 200,
-      responseText: JSON.stringify({ changed_lines: 2, created_icons: 1 }),
+      responseText: processResult,
     }), 0),
   },
   crypto: { randomUUID: () => "request-id" },
@@ -97,6 +100,15 @@ if (statusElement?.textContent !== "対象ページを確認しています…")
   throw new Error(`クリック直後の表示が不正です: ${statusElement?.textContent}`);
 }
 setTimeout(() => {
+  if (result.failed_icons?.length) {
+    const message = alerts.join("\n");
+    if (!message.includes("アリス(臨戦)") || !message.includes("Gyazo upload failed")) {
+      throw new Error(`失敗理由がありません: ${message}`);
+    }
+    if (message.includes("変更はありませんでした")) throw new Error("失敗を変更なしと表示しています");
+    if (reloadCalled !== (result.changed_lines > 0)) throw new Error("再読み込み条件が不正です");
+    return;
+  }
   if (!alerts.some((message) => message.includes("変更行: 2行") && message.includes("新規アイコン: 1件"))) {
     throw new Error(`完了通知が不正です: ${JSON.stringify(alerts)}`);
   }
@@ -112,13 +124,22 @@ setTimeout(() => {
   if (!reloadCalled) throw new Error("成功後にページが再読み込みされていません");
 }, 30);
 """
-        result = subprocess.run(
-            ["node", "-e", harness, str(NATIVE_SCRIPT), str(BRIDGE_SCRIPT)],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
+        for summary in (
+            {"changed_lines": 2, "created_icons": 1},
+            {"changed_lines": 0, "created_icons": 0, "failed_icons": [
+                {"student_name": "アリス(臨戦)", "reason": "Gyazo upload failed"},
+            ]},
+            {"changed_lines": 2, "created_icons": 1, "failed_icons": [
+                {"student_name": "アリス(臨戦)", "reason": "Gyazo upload failed"},
+            ]},
+        ):
+            with self.subTest(summary=summary):
+                result = subprocess.run(
+                    ["node", "-e", harness, str(NATIVE_SCRIPT), str(BRIDGE_SCRIPT), json.dumps(summary)],
+                    check=False, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+
 
 
 if __name__ == "__main__":

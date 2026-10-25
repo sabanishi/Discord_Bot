@@ -51,6 +51,10 @@ def create_tactical_challenge_blueprint() -> Blueprint:
                     "title": result.title,
                     "changed_lines": result.changed_lines,
                     "created_icons": len(result.created_icons),
+                    "failed_icons": [
+                        {"student_name": student_name, "reason": reason}
+                        for student_name, reason in result.failed_icons
+                    ],
                 }
             )
         )
