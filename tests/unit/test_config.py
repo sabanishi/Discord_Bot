@@ -38,6 +38,16 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.link_warning_enabled)
         self.assertEqual(config.mention_target, "<@789>")
         self.assertEqual(config.link_warning_interval_minutes, 30)
+        self.assertEqual(config.bookmark_channel_id, 0)
+        self.assertEqual(config.gyazo_access_token, "")
+
+    def test_load_config_reads_bookmark_settings(self):
+        config = load_config(
+            {"BOOKMARK_CHANNEL_ID": "321", "GYAZO_ACCESS_TOKEN": " token "}
+        )
+
+        self.assertEqual(config.bookmark_channel_id, 321)
+        self.assertEqual(config.gyazo_access_token, "token")
 
     def test_resolve_threshold_is_lowered_when_not_below_warning_threshold(self):
         config = load_config(

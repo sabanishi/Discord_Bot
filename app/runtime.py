@@ -45,6 +45,10 @@ class RuntimeState:
             raise RuntimeError(
                 "環境変数 MIRROR_REPLACEMENT_CONFIG_PAGE が設定されていません"
             )
+        if self.config.bookmark_channel_id and not self.config.gyazo_access_token:
+            raise RuntimeError(
+                "BOOKMARK_CHANNEL_ID を設定する場合は環境変数 GYAZO_ACCESS_TOKEN が必要です"
+            )
 
 
 def initialize_runtime() -> RuntimeState:

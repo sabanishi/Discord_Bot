@@ -59,6 +59,33 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "DISCORD_TOKEN"):
             state.validate_env()
 
+    def test_validate_env_requires_gyazo_token_only_when_bookmark_is_enabled(self):
+        base = AppConfig(
+            token="token",
+            default_channel_id=1,
+            alert_channel_id=2,
+            cosense_project="project",
+            cosense_sid="sid",
+            create_page_time=(7, 0),
+            check_page_time=(23, 0),
+            mention_target="@user",
+            link_warning_enabled=False,
+            link_warning_interval_minutes=60,
+            link_warning_config_page="config",
+            link_warning_threshold=30,
+            link_warning_resolve_threshold=29,
+            mirror_public_project="public",
+            mirror_exclusion_config_page="除外設定",
+            mirror_replacement_config_page="置換設定",
+        )
+
+        RuntimeState(config=base).validate_env()
+        RuntimeState(
+            config=replace(base, bookmark_channel_id=10, gyazo_access_token="g")
+        ).validate_env()
+        with self.assertRaisesRegex(RuntimeError, "GYAZO_ACCESS_TOKEN"):
+            RuntimeState(config=replace(base, bookmark_channel_id=10)).validate_env()
+
     def test_validate_env_rejects_missing_mirroring_configuration(self):
         state = RuntimeState(config=AppConfig(
             token="token",

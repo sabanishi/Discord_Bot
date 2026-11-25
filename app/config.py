@@ -22,6 +22,8 @@ class AppConfig:
     mirror_exclusion_config_page: str = ""
     mirror_replacement_config_page: str = ""
     mirror_run_hours: tuple[int, ...] = (8, 16, 0)
+    bookmark_channel_id: int = 0
+    gyazo_access_token: str = ""
 
 
 def normalize_sid(sid: str) -> str:
@@ -167,4 +169,9 @@ def load_config(environ: Mapping[str, str] | None = None) -> AppConfig:
             values.get("MIRROR_RUN_HOURS", "8,16,24"),
             "MIRROR_RUN_HOURS",
         ),
+        bookmark_channel_id=_parse_int(
+            values.get("BOOKMARK_CHANNEL_ID", "0"),
+            "BOOKMARK_CHANNEL_ID",
+        ),
+        gyazo_access_token=values.get("GYAZO_ACCESS_TOKEN", "").strip(),
     )
